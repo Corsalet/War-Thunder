@@ -8,6 +8,7 @@
   body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; color: #0f0; }
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; }
+  
   #crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.7);
@@ -70,6 +71,13 @@
   
   #ammo { font-size: 18px; font-weight: bold; color: #0f0; }
   #ammo.low { color: #ff4400; }
+  
+  #start-timer {
+    position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 80px; font-weight: bold; color: #0f0; text-shadow: 0 0 20px #000;
+    display: none; z-index: 5;
+  }
+
   #end-screen {
     position: absolute; inset: 0; background: rgba(0,0,0,0.8);
     display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -97,6 +105,7 @@
       БК: <span id="ammo">0</span>
     </div>
   </div>
+  <div id="start-timer">15</div>
 </div>
 
 <div id="menu">
@@ -140,6 +149,8 @@ const state = {
   type: 'tank',
   mapIndex: 0,
   running: false,
+  isPreparePhase: false,
+  prepTime: 15,
   score: 0,
   kills: 0,
   targetKills: 10,
@@ -150,7 +161,6 @@ const state = {
 // СЦЕНА
 // ============================================================
 const scene = new THREE.Scene();
-// Красивое небо
 scene.background = new THREE.Color(0x87a7c7);
 scene.fog = new THREE.Fog(0x87a7c7, 150, 600);
 
@@ -176,18 +186,15 @@ sun.shadow.camera.far = 500;
 scene.add(sun);
 
 // ============================================================
-// КАРТЫ, ЛАНДШАФТ И РАСТИТЕЛЬНОСТЬ
+// КАРТЫ
 // ============================================================
 function buildMapFields() {
   const group = new THREE.Group();
-  
-  // Холмистый ландшафт
   const groundGeo = new THREE.PlaneGeometry(800, 800, 100, 100);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i);
     const dist = Math.sqrt(x*x + y*y);
-    // Делаем центр ровным (для спавна), а края - холмистыми
     const h = dist > 100 ? (Math.sin(x*0.02)*Math.cos(y*0.02)*8 + Math.sin(x*0.05+y*0.03)*3) : 0;
     pos.setZ(i, h);
   }
@@ -199,7 +206,6 @@ function buildMapFields() {
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Густые ели
   for (let i = 0; i < 150; i++) {
     const t = new THREE.Group();
     const trunk = new THREE.Mesh(
@@ -208,18 +214,14 @@ function buildMapFields() {
     );
     trunk.position.y = 2.5; trunk.castShadow = true;
     t.add(trunk);
-    
-    // Три яруса кроны
     for (let j = 0; j < 3; j++) {
       const crown = new THREE.Mesh(
         new THREE.ConeGeometry(3 - j*0.8, 4, 7),
         new THREE.MeshStandardMaterial({ color: 0x1a4a1a, roughness: 1 })
       );
-      crown.position.y = 4 + j * 2.5; 
-      crown.castShadow = true;
+      crown.position.y = 4 + j * 2.5; crown.castShadow = true;
       t.add(crown);
     }
-    
     const angle = Math.random() * Math.PI * 2;
     const dist = 60 + Math.random() * 300;
     t.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
@@ -227,11 +229,8 @@ function buildMapFields() {
     group.add(t);
   }
 
-  // Дома-укрытия
   for (let i = 0; i < 25; i++) {
-    const w = 6 + Math.random()*4;
-    const h = 4 + Math.random()*3;
-    const d = 6 + Math.random()*4;
+    const w = 6 + Math.random()*4, h = 4 + Math.random()*3, d = 6 + Math.random()*4;
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
       new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 })
@@ -256,23 +255,18 @@ function buildMapCity() {
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Здания
   for (let i = 0; i < 80; i++) {
-    const w = 10 + Math.random()*20;
-    const h = 15 + Math.random()*40;
-    const d = 10 + Math.random()*20;
+    const w = 10 + Math.random()*20, h = 15 + Math.random()*40, d = 10 + Math.random()*20;
     const b = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
       new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(0.08, 0.15, 0.2 + Math.random()*0.3),
-        roughness: 0.9
+        color: new THREE.Color().setHSL(0.08, 0.15, 0.2 + Math.random()*0.3), roughness: 0.9
       })
     );
-    
     const angle = Math.random() * Math.PI * 2;
     const dist = 50 + Math.random() * 300;
     b.position.set(Math.cos(angle)*dist, h/2, Math.sin(angle)*dist);
-    b.rotation.y = Math.random() > 0.5 ? 0 : Math.PI/2; // Ровные кварталы
+    b.rotation.y = Math.random() > 0.5 ? 0 : Math.PI/2;
     b.castShadow = true; b.receiveShadow = true;
     group.add(b);
   }
@@ -285,7 +279,6 @@ function loadMap(idx) {
   mapGroup = idx === 0 ? buildMapFields() : buildMapCity();
   scene.add(mapGroup);
   
-  // Точки захвата (A, B, C)
   state.capturePoints.forEach(p => scene.remove(p.mesh));
   state.capturePoints = [];
   const letters = ['A', 'B', 'C'];
@@ -303,65 +296,87 @@ function loadMap(idx) {
 }
 
 // ============================================================
-// МОДЕЛИ
+// УЛУЧШЕННЫЕ МОДЕЛИ
 // ============================================================
 function makeTank(nation) {
   const g = new THREE.Group();
   const isUSSR = nation === 'ussr';
-  const hullColor = isUSSR ? 0x4a5a3a : 0x5a5040;
-  const turretColor = isUSSR ? 0x3a4a2a : 0x4a4030;
+  const hullColor = isUSSR ? 0x3a4a2a : 0x4a4030;
+  const turretColor = isUSSR ? 0x2a3a1a : 0x3a3020;
 
-  const hullShape = new THREE.Shape();
-  hullShape.moveTo(-1.6, 0);
-  hullShape.lineTo(1.6, 0);
-  hullShape.lineTo(1.6, 0.6);
-  hullShape.lineTo(0.6, 1.2);
-  hullShape.lineTo(-1.6, 1.2);
-  hullShape.lineTo(-1.6, 0);
-  const hullGeo = new THREE.ExtrudeGeometry(hullShape, { depth: 5, bevelEnabled: false });
-  hullGeo.translate(0, 0, -2.5);
-  const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({
-    color: hullColor, roughness: 0.85, metalness: 0.25
-  }));
+  // Корпус (основа)
+  const hull = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2, 1.0, 6),
+    new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.85, metalness: 0.2 })
+  );
+  hull.position.y = 0.5;
   hull.castShadow = true; hull.receiveShadow = true;
   g.add(hull);
 
-  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.25, 12);
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 });
-  for (let i = 0; i < 5; i++) {
-    for (const side of [-1.75, 1.75]) {
-      const w = new THREE.Mesh(wheelGeo, wheelMat);
-      w.rotation.z = Math.PI/2;
-      w.position.set(side, 0.42, -1.9 + i*0.95);
-      w.castShadow = true;
-      g.add(w);
-    }
+  // Лобовой лист (наклонный)
+  const frontPlate = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2, 1.2, 0.2),
+    new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.8 })
+  );
+  frontPlate.position.set(0, 0.8, -3);
+  frontPlate.rotation.x = -0.5;
+  frontPlate.castShadow = true;
+  g.add(frontPlate);
+
+  // Гусеницы
+  for (const side of [-1.8, 1.8]) {
+    const track = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 1.2, 6.2),
+      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 })
+    );
+    track.position.set(side, 0.6, 0);
+    track.castShadow = true; track.receiveShadow = true;
+    g.add(track);
   }
 
+  // Башня
   const turret = new THREE.Group();
-  turret.position.set(0, 1.25, -0.3);
+  turret.position.set(0, 1.3, -0.5);
 
-  const tGeo = isUSSR
-    ? new THREE.CylinderGeometry(1.05, 1.25, 0.75, 8)
-    : new THREE.CylinderGeometry(1.15, 1.35, 0.7, 6);
-  const tMesh = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({
-    color: turretColor, roughness: 0.8, metalness: 0.3
-  }));
+  const tMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.3, 0.8, 8),
+    new THREE.MeshStandardMaterial({ color: turretColor, roughness: 0.8, metalness: 0.3 })
+  );
   tMesh.castShadow = true;
   turret.add(tMesh);
 
-  const barrelLen = isUSSR ? 3.6 : 3.2;
+  // Маска орудия
+  const mantlet = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.5, 0.6),
+    new THREE.MeshStandardMaterial({ color: turretColor, roughness: 0.7 })
+  );
+  mantlet.position.set(0, 0, 1.2);
+  mantlet.castShadow = true;
+  turret.add(mantlet);
+
+  // Ствол
+  const barrelLen = 4.0;
   const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.09, 0.11, barrelLen, 10),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.85 })
+    new THREE.CylinderGeometry(0.08, 0.1, barrelLen, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.9 })
   );
   barrel.rotation.x = Math.PI/2;
   barrel.position.set(0, 0, 1.4 + barrelLen/2);
   barrel.castShadow = true;
   turret.add(barrel);
 
+  // Дульный тормоз
+  const muzzleBrake = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.15, 0.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 })
+  );
+  muzzleBrake.rotation.x = Math.PI/2;
+  muzzleBrake.position.set(0, 0, 1.4 + barrelLen);
+  turret.add(muzzleBrake);
+
+  // Точка вылета снаряда (строго на конце ствола)
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, 0, 1.4 + barrelLen);
+  muzzle.position.set(0, 0, 1.6 + barrelLen);
   turret.add(muzzle);
 
   g.add(turret);
@@ -385,8 +400,8 @@ function makePlane(nation) {
   const isUSSR = nation === 'ussr';
   const bodyColor = isUSSR ? 0x3a5a3a : 0x5a5550;
 
-  // Фюзеляж направлен по -Z (вперед)
-  const fusGeo = new THREE.CylinderGeometry(0.4, 0.6, 6, 10);
+  // Фюзеляж (смотрит в -Z)
+  const fusGeo = new THREE.CylinderGeometry(0.4, 0.7, 7, 10);
   fusGeo.rotateX(Math.PI/2);
   const fus = new THREE.Mesh(fusGeo, new THREE.MeshStandardMaterial({
     color: bodyColor, roughness: 0.7, metalness: 0.35
@@ -394,16 +409,15 @@ function makePlane(nation) {
   fus.castShadow = true;
   g.add(fus);
 
-  // Нос (вперед -Z)
   const nose = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 10, 10),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.6 })
   );
-  nose.position.z = -3;
+  nose.position.z = -3.5;
   g.add(nose);
 
   // Крылья
-  const wingGeo = new THREE.BoxGeometry(12, 0.15, 2);
+  const wingGeo = new THREE.BoxGeometry(14, 0.15, 2.5);
   const wing = new THREE.Mesh(wingGeo, new THREE.MeshStandardMaterial({
     color: bodyColor, roughness: 0.8
   }));
@@ -411,32 +425,41 @@ function makePlane(nation) {
   wing.castShadow = true;
   g.add(wing);
 
-  // Хвост (сзади +Z)
+  // Кабина
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 8, 8, 0, Math.PI*2, 0, Math.PI/2),
+    new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6, metalness: 0.5 })
+  );
+  canopy.position.set(0, 0.4, -0.5);
+  canopy.scale.set(1, 1, 1.5);
+  g.add(canopy);
+
+  // Хвост
   const tailH = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 0.1, 1),
+    new THREE.BoxGeometry(4.5, 0.1, 1.2),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8 })
   );
-  tailH.position.set(0, 0, 2.8);
+  tailH.position.set(0, 0, 3.2);
   g.add(tailH);
 
   const tailV = new THREE.Mesh(
-    new THREE.BoxGeometry(0.15, 1.5, 1.2),
+    new THREE.BoxGeometry(0.15, 1.8, 1.5),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8 })
   );
-  tailV.position.set(0, 0.8, 2.8);
+  tailV.position.set(0, 0.9, 3.2);
   g.add(tailV);
 
-  // Винт спереди (-Z)
+  // Винт
   const prop = new THREE.Mesh(
-    new THREE.CircleGeometry(1.5, 8),
+    new THREE.CircleGeometry(1.8, 8),
     new THREE.MeshStandardMaterial({ color: 0x222222, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
   );
-  prop.position.z = -3.2;
+  prop.position.z = -3.8;
   g.add(prop);
   g.userData.prop = prop;
 
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, 0, -3.5);
+  muzzle.position.set(0, 0, -4.0);
   g.add(muzzle);
 
   g.userData.muzzle = muzzle;
@@ -447,11 +470,11 @@ function makePlane(nation) {
   g.userData.lastShot = 0;
   g.userData.reloadTime = 0.1;
   g.userData.speed = 60;
-  g.userData.maxSpeed = 120;
+  g.userData.maxSpeed = 130;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
   
-  // Для управления
+  // Для управления полетом
   g.userData.targetPitch = 0;
   g.userData.targetRoll = 0;
   return g;
@@ -504,7 +527,7 @@ function spawnBots(count) {
 }
 
 // ============================================================
-// СНАРЯДЫ И ЧАСТИЦЫ
+// СНАРЯДЫ
 // ============================================================
 function spawnShell(origin, direction, speed, damage, owner) {
   const isAP = damage > 30;
@@ -543,7 +566,7 @@ function spawnParticle(pos, color, size, life) {
 }
 
 // ============================================================
-// БРОНЯ И ПОПАДАНИЯ
+// БРОНЯ
 // ============================================================
 function getArmorAtPoint(vehicle, worldPoint) {
   const local = vehicle.worldToLocal(worldPoint.clone());
@@ -582,13 +605,10 @@ function handleHit(shell) {
         msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
         msg.style.color = '#ff6600';
         
-        // Влияние модулей
-        if (bot.mesh.userData.modules.engine <= 0 && bot.type === 'tank') {
-          msg.textContent += ' (ДВИГАТЕЛЬ)';
-        }
+        if (bot.mesh.userData.modules.engine <= 0 && bot.type === 'tank') msg.textContent += ' (ДВИГАТЕЛЬ)';
         if (bot.type === 'plane' && armorInfo.module === 'wing') {
           msg.textContent += ' (КРЫЛО)';
-          bot.mesh.rotation.z = 2.0; // Падение
+          bot.mesh.rotation.z = 2.0;
           bot.mesh.userData.health = 0;
         }
 
@@ -631,10 +651,9 @@ addEventListener('mousemove', e => {
     mouseX = (e.clientX / innerWidth) * 2 - 1;
     mouseY = (e.clientY / innerHeight) * 2 - 1;
   } else {
-    // Для самолета мышь задает целевой крен и тангаж
     if (document.pointerLockElement) {
-      mouseX += e.movementX * 0.002;
-      mouseY += e.movementY * 0.002;
+      mouseX += e.movementX * 0.0015;
+      mouseY += e.movementY * 0.0015;
       mouseX = THREE.MathUtils.clamp(mouseX, -1, 1);
       mouseY = THREE.MathUtils.clamp(mouseY, -1, 1);
     }
@@ -642,7 +661,7 @@ addEventListener('mousemove', e => {
 });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousedown', e => {
-  if (!state.running || !player) return;
+  if (!state.running || !player || state.isPreparePhase) return;
   if (e.button === 0) tryFire();
   if (e.button === 2) {
     zoomed = !zoomed;
@@ -666,17 +685,22 @@ function tryFire() {
   player.userData.lastShot = now;
   player.userData.ammo--;
 
+  // Берем точку спавна строго из ствола
   const muzzleWorld = new THREE.Vector3();
   player.userData.muzzle.getWorldPosition(muzzleWorld);
   
+  // Направление стрельбы зависит от типа
   const dir = new THREE.Vector3(0, 0, -1);
   const quat = new THREE.Quaternion();
   if (player.userData.type === 'tank') {
     player.userData.turret.getWorldQuaternion(quat);
+    // Для танка стреляем немного вверх (баллистика)
+    dir.applyQuaternion(quat).normalize();
+    dir.y += 0.02; 
   } else {
     player.getWorldQuaternion(quat);
+    dir.applyQuaternion(quat).normalize();
   }
-  dir.applyQuaternion(quat).normalize();
 
   const isTank = player.userData.type === 'tank';
   spawnShell(
@@ -711,29 +735,34 @@ function updateTank(dt) {
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, move * speed * engineFactor * dt);
   
-  // Простое удержание над землей
+  // Держим танк на земле
   player.position.y = 1.5;
 
+  // Поворот башни: мышь управляет направлением ствола
   const turret = ud.turret;
   const tFactor = Math.max(0.1, ud.modules.turret / 100);
   const targetRot = -mouseX * Math.PI;
-  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetRot, 0.08 * tFactor);
-  turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, mouseY * 0.1, 0.08);
+  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetRot, 0.1 * tFactor);
+  
+  // Вертикальная наводка (тангаж башни)
+  const targetPitch = mouseY * 0.15;
+  turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 0.1);
 }
 
 function updatePlane(dt) {
   const ud = player.userData;
 
-  // Крен и тангаж плавно стремятся к позиции мыши
-  const targetRoll = -mouseX * 1.2;
-  const targetPitch = -mouseY * 0.8;
+  // Управление мышью: задаем целевой крен и тангаж
+  const targetRoll = -mouseX * 0.8;
+  const targetPitch = -mouseY * 0.6;
 
-  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, targetRoll, 2.0 * dt);
-  player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 2.0 * dt);
+  // Плавно поворачиваем модель
+  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, targetRoll, 1.5 * dt);
+  player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 1.5 * dt);
 
-  // Автовыравнивание, если мышь в центре
-  if (Math.abs(mouseX) < 0.05) player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.0 * dt);
-  if (Math.abs(mouseY) < 0.05) player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 1.0 * dt);
+  // Автовыравнивание
+  if (Math.abs(mouseX) < 0.05) player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.5 * dt);
+  if (Math.abs(mouseY) < 0.05) player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 1.5 * dt);
 
   // Тяга
   let throttle = 0;
@@ -744,14 +773,12 @@ function updatePlane(dt) {
   ud.speed += (throttle * 30 - 2) * dt;
   ud.speed = THREE.MathUtils.clamp(ud.speed, 30, ud.maxSpeed * engineFactor);
 
-  // Движение вперед (по -Z)
+  // Движение
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  // Гравитация (если не хватает скорости)
-  if (ud.speed < 40) {
-    player.position.y -= (40 - ud.speed) * 0.5 * dt;
-  }
+  // Гравитация
+  if (ud.speed < 40) player.position.y -= (40 - ud.speed) * 0.5 * dt;
 
   // Ограничение по высоте
   if (player.position.y < 3) {
@@ -761,6 +788,8 @@ function updatePlane(dt) {
 }
 
 function updateBots(dt) {
+  if (state.isPreparePhase) return; // Боты стоят на месте во время подготовки
+
   const now = performance.now() / 1000;
   for (const bot of bots) {
     const ud = bot.mesh.userData;
@@ -775,7 +804,6 @@ function updateBots(dt) {
         const dir = toTarget.normalize();
         const targetAngle = Math.atan2(dir.x, dir.z);
         bot.mesh.rotation.y = THREE.MathUtils.lerp(bot.mesh.rotation.y, targetAngle, 0.05);
-        
         const engineFactor = Math.max(0.2, ud.modules.engine / 100);
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
         bot.mesh.position.addScaledVector(fwd, 10 * engineFactor * dt);
@@ -791,14 +819,12 @@ function updateBots(dt) {
           const muzzle = new THREE.Vector3();
           ud.muzzle.getWorldPosition(muzzle);
           const dir = toPlayer.normalize();
-          // Небольшой разброс
           dir.x += (Math.random()-0.5)*0.05;
           dir.y += (Math.random()-0.5)*0.05;
           spawnShell(muzzle, dir, 90, 45, 'bot');
         }
       }
     } else {
-      // Самолеты-боты просто летают кругами
       bot.mesh.rotation.y += 0.2 * dt;
       bot.mesh.rotation.z = 0.3;
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
@@ -812,6 +838,7 @@ function updateBots(dt) {
 }
 
 function updateShells(dt) {
+  if (state.isPreparePhase) return;
   for (let i = shells.length - 1; i >= 0; i--) {
     const s = shells[i];
     s.velocity.y -= 9.8 * dt;
@@ -854,26 +881,27 @@ function updateCamera(dt) {
 
   if (isTank) {
     const back = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
-    const dist = zoomed ? 10 : 18;
+    const dist = zoomed ? 10 : 16;
     const height = zoomed ? 5 : 8;
     const targetPos = player.position.clone()
       .addScaledVector(back, dist)
       .add(new THREE.Vector3(0, height, 0));
     camera.position.lerp(targetPos, 0.1);
-    const lookAt = player.position.clone().add(new THREE.Vector3(0, 2, 0));
+    
+    // Смотрим строго на прицел (направление ствола)
+    const lookAt = new THREE.Vector3(0, 0, 0);
+    player.userData.muzzle.getWorldPosition(lookAt);
     camera.lookAt(lookAt);
   } else {
-    // Камера сзади и чуть сверху
     const back = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
     const targetPos = player.position.clone()
-      .addScaledVector(back, 15)
-      .addScaledVector(up, 4);
+      .addScaledVector(back, 18)
+      .addScaledVector(up, 5);
     camera.position.lerp(targetPos, 0.15);
     
-    // Смотрим вперед
     const lookAt = player.position.clone()
-      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 20);
+      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 30);
     camera.lookAt(lookAt);
     camera.up.copy(up);
   }
@@ -922,7 +950,6 @@ function updateHUD() {
   const scale = 180 / 400;
   const cx = 90, cz = 90;
 
-  // Точки захвата
   mctx.fillStyle = 'rgba(0,255,0,0.5)';
   for (const cp of state.capturePoints) {
     mctx.beginPath();
@@ -930,13 +957,11 @@ function updateHUD() {
     mctx.fill();
   }
 
-  // Игрок
   mctx.fillStyle = '#fff';
   mctx.beginPath();
   mctx.arc(cx + player.position.x * scale, cz + player.position.z * scale, 4, 0, Math.PI*2);
   mctx.fill();
 
-  // Враги
   mctx.fillStyle = '#f00';
   for (const b of bots) {
     mctx.beginPath();
@@ -953,11 +978,23 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (state.running && player) {
-    if (player.userData.type === 'tank') updateTank(dt);
-    else updatePlane(dt);
+    if (state.isPreparePhase) {
+      state.prepTime -= dt;
+      document.getElementById('start-timer').textContent = Math.ceil(state.prepTime);
+      if (state.prepTime <= 0) {
+        state.isPreparePhase = false;
+        document.getElementById('start-timer').style.display = 'none';
+      }
+    }
 
-    updateBots(dt);
-    updateShells(dt);
+    // Логика движения отключается во время подготовки (кроме камеры)
+    if (!state.isPreparePhase) {
+      if (player.userData.type === 'tank') updateTank(dt);
+      else updatePlane(dt);
+      updateBots(dt);
+      updateShells(dt);
+    }
+    
     updateParticles(dt);
     updateCamera(dt);
     updateHUD();
@@ -1000,6 +1037,10 @@ function startGame() {
   state.running = true;
   state.score = 0;
   state.kills = 0;
+  state.isPreparePhase = true;
+  state.prepTime = 15;
+  document.getElementById('start-timer').style.display = 'block';
+  document.getElementById('start-timer').textContent = '15';
   document.getElementById('menu').style.display = 'none';
   document.getElementById('end-screen').style.display = 'none';
 
