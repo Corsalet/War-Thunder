@@ -1,0 +1,33 @@
+const { WebSocketServer } = require('ws');
+const wss = new WebSocketServer({ port: 8080 });
+const players = new Map();
+let nextId = 1;
+
+wss.on('connection', (ws) => {
+  const id = nextId++;
+  players.set(id, { id, ws, state: null, nation: 'ussr', vtype: 'tank' });
+
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'join') {
+        const p = players.get(id);
+        p.nation = msg.nation; p.vtype = msg.vtype;
+        ws.send(JSON.stringify({ type: 'welcome', id }));
+      } else if (msg.type === 'pos') {
+        const p = players.get(id);
+        p.state = msg;
+        // Рассылаем всем остальным
+        const packet = JSON.stringify({
+          type: 'state', id, state: msg
+        });
+        for (const [pid, other] of players) {
+          if (pid !== id && other.ws.readyState === 1) other.ws.send(packet);
+        }
+      }
+    } catch (_) {}
+  });
+
+  ws.on('close', () => { players.delete(id); });
+});
+console.log('WS server on :8080');
