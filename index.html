@@ -9,15 +9,16 @@
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; }
   #crosshair {
-    position: absolute; top: 50%; left: 50%; width: 30px; height: 30px;
+    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.7);
     border-radius: 50%; box-shadow: 0 0 8px rgba(0,255,0,0.6);
   }
   #crosshair::before, #crosshair::after {
     content: ''; position: absolute; background: rgba(0,255,0,0.9);
   }
-  #crosshair::before { width: 2px; height: 8px; left: 50%; top: -12px; transform: translateX(-50%); }
-  #crosshair::after { width: 2px; height: 8px; left: 50%; bottom: -12px; transform: translateX(-50%); }
+  #crosshair::before { width: 2px; height: 10px; left: 50%; top: -15px; transform: translateX(-50%); }
+  #crosshair::after { width: 2px; height: 10px; left: 50%; bottom: -15px; transform: translateX(-50%); }
+  
   #hud-bottom {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -35,6 +36,13 @@
   #topinfo {
     position: absolute; top: 20px; left: 20px; font-size: 14px;
     text-shadow: 0 0 4px #000;
+  }
+  #compass {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    width: 400px; height: 30px; border-bottom: 2px solid #0f0;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000;
+    padding-bottom: 5px;
   }
   #menu {
     position: absolute; inset: 0; background: rgba(0,0,0,0.9);
@@ -59,6 +67,15 @@
   }
   #log div { animation: fade 4s forwards; }
   @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
+  
+  #ammo { font-size: 18px; font-weight: bold; color: #0f0; }
+  #ammo.low { color: #ff4400; }
+  #end-screen {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.8);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: all; z-index: 20; color: #0f0; gap: 20px;
+  }
+  #end-screen h2 { font-size: 64px; text-shadow: 0 0 20px #0f0; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -66,6 +83,9 @@
 </head>
 <body>
 <div id="ui">
+  <div id="compass">
+    <span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span>
+  </div>
   <div id="crosshair"></div>
   <div id="topinfo"></div>
   <canvas id="minimap" width="180" height="180"></canvas>
@@ -73,6 +93,9 @@
   <div id="hud-bottom">
     <div class="panel" id="status">—</div>
     <div class="panel" id="reload">Готов</div>
+    <div class="panel" id="ammo-panel">
+      БК: <span id="ammo">0</span>
+    </div>
   </div>
 </div>
 
@@ -92,10 +115,18 @@
     <button class="btn small" data-map="1">Карта: Город</button>
   </div>
   <div class="row">
-    <button class="btn" id="startBtn">Одиночная игра</button>
-    <button class="btn" id="mpBtn">Мультиплеер</button>
+    <button class="btn" id="startBtn">В бой!</button>
   </div>
-  <p style="font-size:12px;opacity:0.5;margin-top:20px;">WASD — движение · Мышь — башня/обзор · ЛКМ — огонь · ПКМ — зум · Space — тормоз</p>
+  <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
+    Танк: WASD — движение, Мышь — башня, ЛКМ — огонь<br>
+    Самолёт: Мышь — управление, W/S — скорость, ЛКМ — огонь
+  </p>
+</div>
+
+<div id="end-screen">
+  <h2 id="end-title">ПОБЕДА</h2>
+  <p id="end-stats">Уничтожено: 0</p>
+  <button class="btn" id="restartBtn">Вернуться в меню</button>
 </div>
 
 <script type="module">
@@ -108,22 +139,22 @@ const state = {
   nation: 'ussr',
   type: 'tank',
   mapIndex: 0,
-  mode: null,
   running: false,
-  ws: null,
-  playerId: null,
   score: 0,
-  enemies: [],
+  kills: 0,
+  targetKills: 10,
+  capturePoints: [],
 };
 
 // ============================================================
 // СЦЕНА
 // ============================================================
 const scene = new THREE.Scene();
+// Красивое небо
 scene.background = new THREE.Color(0x87a7c7);
-scene.fog = new THREE.Fog(0x87a7c7, 80, 300);
+scene.fog = new THREE.Fog(0x87a7c7, 150, 600);
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 2000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -134,62 +165,81 @@ document.body.appendChild(renderer.domElement);
 const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x4a3a20, 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 2.2);
-sun.position.set(60, 100, 40);
+sun.position.set(100, 150, 80);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -120;
-sun.shadow.camera.right = 120;
-sun.shadow.camera.top = 120;
-sun.shadow.camera.bottom = -120;
-sun.shadow.camera.far = 300;
+sun.shadow.camera.left = -200;
+sun.shadow.camera.right = 200;
+sun.shadow.camera.top = 200;
+sun.shadow.camera.bottom = -200;
+sun.shadow.camera.far = 500;
 scene.add(sun);
 
 // ============================================================
-// КАРТЫ
+// КАРТЫ, ЛАНДШАФТ И РАСТИТЕЛЬНОСТЬ
 // ============================================================
 function buildMapFields() {
   const group = new THREE.Group();
-  const groundGeo = new THREE.PlaneGeometry(400, 400, 64, 64);
+  
+  // Холмистый ландшафт
+  const groundGeo = new THREE.PlaneGeometry(800, 800, 100, 100);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i);
-    const h = Math.sin(x*0.05)*Math.cos(y*0.05)*2 + Math.sin(x*0.13+y*0.07)*0.8;
+    const dist = Math.sqrt(x*x + y*y);
+    // Делаем центр ровным (для спавна), а края - холмистыми
+    const h = dist > 100 ? (Math.sin(x*0.02)*Math.cos(y*0.02)*8 + Math.sin(x*0.05+y*0.03)*3) : 0;
     pos.setZ(i, h);
   }
   groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({
-    color: 0x5a7a3a, roughness: 1, metalness: 0
+    color: 0x4a6a2a, roughness: 1, metalness: 0
   }));
   ground.rotation.x = -Math.PI/2;
   ground.receiveShadow = true;
   group.add(ground);
 
-  for (let i = 0; i < 60; i++) {
+  // Густые ели
+  for (let i = 0; i < 150; i++) {
     const t = new THREE.Group();
     const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.3, 0.4, 4, 6),
+      new THREE.CylinderGeometry(0.4, 0.5, 5, 6),
       new THREE.MeshStandardMaterial({ color: 0x3a2510, roughness: 1 })
     );
-    trunk.position.y = 2; trunk.castShadow = true;
+    trunk.position.y = 2.5; trunk.castShadow = true;
     t.add(trunk);
-    const crown = new THREE.Mesh(
-      new THREE.ConeGeometry(2.2, 5, 7),
-      new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 })
-    );
-    crown.position.y = 6; crown.castShadow = true;
-    t.add(crown);
-    t.position.set((Math.random()-0.5)*300, 0, (Math.random()-0.5)*300);
-    if (Math.abs(t.position.x) < 30 && Math.abs(t.position.z) < 30) continue;
+    
+    // Три яруса кроны
+    for (let j = 0; j < 3; j++) {
+      const crown = new THREE.Mesh(
+        new THREE.ConeGeometry(3 - j*0.8, 4, 7),
+        new THREE.MeshStandardMaterial({ color: 0x1a4a1a, roughness: 1 })
+      );
+      crown.position.y = 4 + j * 2.5; 
+      crown.castShadow = true;
+      t.add(crown);
+    }
+    
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * 300;
+    t.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
+    t.rotation.y = Math.random() * Math.PI;
     group.add(t);
   }
 
-  for (let i = 0; i < 12; i++) {
+  // Дома-укрытия
+  for (let i = 0; i < 25; i++) {
+    const w = 6 + Math.random()*4;
+    const h = 4 + Math.random()*3;
+    const d = 6 + Math.random()*4;
     const box = new THREE.Mesh(
-      new THREE.BoxGeometry(8, 5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.9 })
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 })
     );
-    box.position.set((Math.random()-0.5)*260, 2.5, (Math.random()-0.5)*260);
-    if (Math.abs(box.position.x) < 20 && Math.abs(box.position.z) < 20) continue;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 40 + Math.random() * 200;
+    box.position.set(Math.cos(angle)*dist, h/2, Math.sin(angle)*dist);
+    box.rotation.y = Math.random() * Math.PI;
     box.castShadow = true; box.receiveShadow = true;
     group.add(box);
   }
@@ -199,42 +249,30 @@ function buildMapFields() {
 function buildMapCity() {
   const group = new THREE.Group();
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
-    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 1 })
+    new THREE.PlaneGeometry(800, 800),
+    new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 1 })
   );
   ground.rotation.x = -Math.PI/2;
   ground.receiveShadow = true;
   group.add(ground);
 
-  for (let i = -2; i <= 2; i++) {
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(8, 400),
-      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1 })
-    );
-    road.rotation.x = -Math.PI/2;
-    road.position.set(i*50, 0.01, 0);
-    road.receiveShadow = true;
-    group.add(road);
-    const road2 = road.clone();
-    road2.rotation.z = Math.PI/2;
-    road2.position.set(0, 0.01, i*50);
-    group.add(road2);
-  }
-
-  for (let i = 0; i < 40; i++) {
-    const w = 8 + Math.random()*10;
-    const h = 10 + Math.random()*25;
-    const d = 8 + Math.random()*10;
+  // Здания
+  for (let i = 0; i < 80; i++) {
+    const w = 10 + Math.random()*20;
+    const h = 15 + Math.random()*40;
+    const d = 10 + Math.random()*20;
     const b = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
       new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(0.08, 0.15, 0.35 + Math.random()*0.2),
+        color: new THREE.Color().setHSL(0.08, 0.15, 0.2 + Math.random()*0.3),
         roughness: 0.9
       })
     );
-    b.position.set((Math.random()-0.5)*300, h/2, (Math.random()-0.5)*300);
-    if (Math.abs(b.position.x) < 25 && Math.abs(b.position.z) < 25) continue;
-    if (Math.abs(b.position.x % 50) < 8 || Math.abs(b.position.z % 50) < 8) continue;
+    
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 50 + Math.random() * 300;
+    b.position.set(Math.cos(angle)*dist, h/2, Math.sin(angle)*dist);
+    b.rotation.y = Math.random() > 0.5 ? 0 : Math.PI/2; // Ровные кварталы
     b.castShadow = true; b.receiveShadow = true;
     group.add(b);
   }
@@ -246,6 +284,22 @@ function loadMap(idx) {
   if (mapGroup) scene.remove(mapGroup);
   mapGroup = idx === 0 ? buildMapFields() : buildMapCity();
   scene.add(mapGroup);
+  
+  // Точки захвата (A, B, C)
+  state.capturePoints.forEach(p => scene.remove(p.mesh));
+  state.capturePoints = [];
+  const letters = ['A', 'B', 'C'];
+  const positions = [[-100, 1, -100], [0, 1, 100], [120, 1, -50]];
+  
+  letters.forEach((letter, i) => {
+    const geo = new THREE.CylinderGeometry(20, 20, 1, 32);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, transparent: true, opacity: 0.3 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(...positions[i]);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    state.capturePoints.push({ letter, mesh, pos: new THREE.Vector3(...positions[i]) });
+  });
 }
 
 // ============================================================
@@ -272,16 +326,6 @@ function makeTank(nation) {
   hull.castShadow = true; hull.receiveShadow = true;
   g.add(hull);
 
-  for (const side of [-1, 1]) {
-    const fender = new THREE.Mesh(
-      new THREE.BoxGeometry(0.35, 0.15, 5),
-      new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.9 })
-    );
-    fender.position.set(side*1.75, 0.95, 0);
-    fender.castShadow = true;
-    g.add(fender);
-  }
-
   const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.25, 12);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 });
   for (let i = 0; i < 5; i++) {
@@ -306,14 +350,6 @@ function makeTank(nation) {
   tMesh.castShadow = true;
   turret.add(tMesh);
 
-  const mantlet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 12, 12),
-    new THREE.MeshStandardMaterial({ color: turretColor, roughness: 0.7, metalness: 0.4 })
-  );
-  mantlet.position.set(0, 0, 1.05);
-  mantlet.castShadow = true;
-  turret.add(mantlet);
-
   const barrelLen = isUSSR ? 3.6 : 3.2;
   const barrel = new THREE.Mesh(
     new THREE.CylinderGeometry(0.09, 0.11, barrelLen, 10),
@@ -328,14 +364,6 @@ function makeTank(nation) {
   muzzle.position.set(0, 0, 1.4 + barrelLen);
   turret.add(muzzle);
 
-  const mg = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6),
-    new THREE.MeshStandardMaterial({ color: 0x111111 })
-  );
-  mg.rotation.x = Math.PI/2;
-  mg.position.set(0.6, 0.5, 0.6);
-  turret.add(mg);
-
   g.add(turret);
 
   g.userData.turret = turret;
@@ -345,9 +373,10 @@ function makeTank(nation) {
   g.userData.modules = { engine: 100, turret: 100, gun: 100 };
   g.userData.health = 100;
   g.userData.lastShot = 0;
-  g.userData.reloadTime = 3.0;
-  g.userData.maxSpeed = 14;
-  g.userData.velocity = new THREE.Vector3();
+  g.userData.reloadTime = 2.5;
+  g.userData.maxSpeed = 18;
+  g.userData.maxAmmo = 30;
+  g.userData.ammo = 30;
   return g;
 }
 
@@ -356,7 +385,8 @@ function makePlane(nation) {
   const isUSSR = nation === 'ussr';
   const bodyColor = isUSSR ? 0x3a5a3a : 0x5a5550;
 
-  const fusGeo = new THREE.CylinderGeometry(0.35, 0.55, 5, 10);
+  // Фюзеляж направлен по -Z (вперед)
+  const fusGeo = new THREE.CylinderGeometry(0.4, 0.6, 6, 10);
   fusGeo.rotateX(Math.PI/2);
   const fus = new THREE.Mesh(fusGeo, new THREE.MeshStandardMaterial({
     color: bodyColor, roughness: 0.7, metalness: 0.35
@@ -364,52 +394,49 @@ function makePlane(nation) {
   fus.castShadow = true;
   g.add(fus);
 
+  // Нос (вперед -Z)
   const nose = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 10, 10),
+    new THREE.SphereGeometry(0.4, 10, 10),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.6 })
   );
-  nose.position.z = 2.5;
+  nose.position.z = -3;
   g.add(nose);
 
-  const wingGeo = new THREE.BoxGeometry(9, 0.12, 1.6);
+  // Крылья
+  const wingGeo = new THREE.BoxGeometry(12, 0.15, 2);
   const wing = new THREE.Mesh(wingGeo, new THREE.MeshStandardMaterial({
     color: bodyColor, roughness: 0.8
   }));
-  wing.position.z = 0.2;
+  wing.position.z = 0;
   wing.castShadow = true;
   g.add(wing);
 
+  // Хвост (сзади +Z)
   const tailH = new THREE.Mesh(
-    new THREE.BoxGeometry(3, 0.1, 0.8),
+    new THREE.BoxGeometry(4, 0.1, 1),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8 })
   );
-  tailH.position.set(0, 0, -2.2);
+  tailH.position.set(0, 0, 2.8);
   g.add(tailH);
 
   const tailV = new THREE.Mesh(
-    new THREE.BoxGeometry(0.1, 1.2, 1),
+    new THREE.BoxGeometry(0.15, 1.5, 1.2),
     new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8 })
   );
-  tailV.position.set(0, 0.6, -2.2);
+  tailV.position.set(0, 0.8, 2.8);
   g.add(tailV);
 
+  // Винт спереди (-Z)
   const prop = new THREE.Mesh(
-    new THREE.CircleGeometry(1.2, 8),
-    new THREE.MeshStandardMaterial({ color: 0x222222, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+    new THREE.CircleGeometry(1.5, 8),
+    new THREE.MeshStandardMaterial({ color: 0x222222, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
   );
-  prop.position.z = 2.85;
+  prop.position.z = -3.2;
   g.add(prop);
   g.userData.prop = prop;
 
-  const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 8, 8, 0, Math.PI*2, 0, Math.PI/2),
-    new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6, metalness: 0.5 })
-  );
-  canopy.position.set(0, 0.4, 0.8);
-  g.add(canopy);
-
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, 0, 3);
+  muzzle.position.set(0, 0, -3.5);
   g.add(muzzle);
 
   g.userData.muzzle = muzzle;
@@ -418,12 +445,15 @@ function makePlane(nation) {
   g.userData.modules = { engine: 100, wing: 100, gun: 100 };
   g.userData.health = 80;
   g.userData.lastShot = 0;
-  g.userData.reloadTime = 0.15;
-  g.userData.speed = 0;
-  g.userData.maxSpeed = 60;
-  g.userData.pitch = 0;
-  g.userData.roll = 0;
-  g.userData.yaw = 0;
+  g.userData.reloadTime = 0.1;
+  g.userData.speed = 60;
+  g.userData.maxSpeed = 120;
+  g.userData.maxAmmo = 200;
+  g.userData.ammo = 200;
+  
+  // Для управления
+  g.userData.targetPitch = 0;
+  g.userData.targetRoll = 0;
   return g;
 }
 
@@ -441,7 +471,7 @@ const particles = [];
 
 function spawnPlayer() {
   player = makeVehicle(state.nation, state.type);
-  player.position.set(0, state.type === 'plane' ? 40 : 1.5, 0);
+  player.position.set(0, state.type === 'plane' ? 60 : 1.5, 0);
   scene.add(player);
 }
 
@@ -450,13 +480,13 @@ function spawnBots(count) {
   bots = [];
   for (let i = 0; i < count; i++) {
     const nation = state.nation === 'ussr' ? 'germany' : 'ussr';
-    const type = Math.random() < 0.3 ? 'plane' : 'tank';
+    const type = Math.random() < 0.4 ? 'plane' : 'tank';
     const mesh = makeVehicle(nation, type);
     const angle = Math.random() * Math.PI * 2;
-    const dist = 60 + Math.random() * 60;
+    const dist = 100 + Math.random() * 100;
     mesh.position.set(
       Math.cos(angle) * dist,
-      type === 'plane' ? 30 + Math.random()*20 : 1.5,
+      type === 'plane' ? 50 + Math.random()*30 : 1.5,
       Math.sin(angle) * dist
     );
     if (type === 'tank') mesh.rotation.y = Math.random() * Math.PI * 2;
@@ -466,7 +496,7 @@ function spawnBots(count) {
       health: mesh.userData.health,
       lastShot: 0,
       target: new THREE.Vector3(
-        (Math.random()-0.5)*100, type === 'plane' ? 30 : 1.5, (Math.random()-0.5)*100
+        (Math.random()-0.5)*200, type === 'plane' ? 50 : 1.5, (Math.random()-0.5)*200
       ),
       changeTarget: 0,
     });
@@ -474,17 +504,17 @@ function spawnBots(count) {
 }
 
 // ============================================================
-// СНАРЯДЫ
+// СНАРЯДЫ И ЧАСТИЦЫ
 // ============================================================
 function spawnShell(origin, direction, speed, damage, owner) {
   const isAP = damage > 30;
   const geo = isAP
-    ? new THREE.CylinderGeometry(0.06, 0.09, 0.6, 6)
-    : new THREE.SphereGeometry(0.08, 6, 6);
+    ? new THREE.CylinderGeometry(0.08, 0.12, 0.8, 6)
+    : new THREE.SphereGeometry(0.1, 6, 6);
   const mat = new THREE.MeshStandardMaterial({
     color: isAP ? 0xffaa00 : 0xffdd44,
     emissive: isAP ? 0xff4400 : 0xffaa00,
-    emissiveIntensity: 1.5
+    emissiveIntensity: 2
   });
   const mesh = new THREE.Mesh(geo, mat);
   if (isAP) mesh.rotation.x = Math.PI/2;
@@ -497,7 +527,7 @@ function spawnShell(origin, direction, speed, damage, owner) {
     life: 5,
     owner
   });
-  spawnParticle(origin, 0xffaa00, 0.8, 0.15);
+  spawnParticle(origin, 0xffaa00, 1.2, 0.15);
 }
 
 function spawnParticle(pos, color, size, life) {
@@ -508,7 +538,7 @@ function spawnParticle(pos, color, size, life) {
   p.position.copy(pos);
   scene.add(p);
   particles.push({ mesh: p, life, maxLife: life, velocity: new THREE.Vector3(
-    (Math.random()-0.5)*2, Math.random()*2, (Math.random()-0.5)*2
+    (Math.random()-0.5)*4, Math.random()*4, (Math.random()-0.5)*4
   )});
 }
 
@@ -520,9 +550,7 @@ function getArmorAtPoint(vehicle, worldPoint) {
   const ud = vehicle.userData;
 
   if (ud.type === 'tank') {
-    if (local.y > 1.0) {
-      return { zone: 'turret', armor: ud.nation === 'ussr' ? 45 : 50, module: 'turret' };
-    }
+    if (local.y > 1.0) return { zone: 'turret', armor: ud.nation === 'ussr' ? 45 : 50, module: 'turret' };
     if (local.z > 1.0) return { zone: 'front', armor: ud.nation === 'ussr' ? 60 : 70, module: 'engine' };
     if (local.z < -1.5) return { zone: 'rear', armor: 30, module: 'engine' };
     return { zone: 'side', armor: 35, module: 'engine' };
@@ -546,22 +574,39 @@ function handleHit(shell) {
       const penetrated = shell.damage > effectiveArmor;
       const log = document.getElementById('log');
       const msg = document.createElement('div');
+      
       if (penetrated) {
-        bot.health -= shell.damage * 0.5;
+        bot.health -= shell.damage * 0.6;
         bot.mesh.userData.modules[armorInfo.module] -= shell.damage;
-        spawnParticle(shell.mesh.position, 0xff4400, 0.5, 0.4);
-        msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}! (-${Math.round(shell.damage*0.5)})`;
+        spawnParticle(shell.mesh.position, 0xff4400, 1.0, 0.4);
+        msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
         msg.style.color = '#ff6600';
-        if (bot.health <= 0) {
+        
+        // Влияние модулей
+        if (bot.mesh.userData.modules.engine <= 0 && bot.type === 'tank') {
+          msg.textContent += ' (ДВИГАТЕЛЬ)';
+        }
+        if (bot.type === 'plane' && armorInfo.module === 'wing') {
+          msg.textContent += ' (КРЫЛО)';
+          bot.mesh.rotation.z = 2.0; // Падение
+          bot.mesh.userData.health = 0;
+        }
+
+        if (bot.health <= 0 || bot.mesh.userData.health <= 0) {
           scene.remove(bot.mesh);
           bots.splice(bots.indexOf(bot), 1);
           state.score += 100;
+          state.kills++;
           msg.textContent = `УНИЧТОЖЕН! +100`;
           msg.style.color = '#ffff00';
+          
+          if (state.kills >= state.targetKills) {
+            endGame(true);
+          }
         }
       } else {
-        spawnParticle(shell.mesh.position, 0xdddddd, 0.4, 0.3);
-        msg.textContent = `РИКОШЕТ / НЕ ПРОБИЛ (${Math.round(effectiveArmor)} > ${shell.damage})`;
+        spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
+        msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`;
         msg.style.color = '#aaaaaa';
       }
       log.prepend(msg);
@@ -582,14 +627,29 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 let mouseX = 0, mouseY = 0;
 let zoomed = false;
 addEventListener('mousemove', e => {
-  mouseX = (e.clientX / innerWidth) * 2 - 1;
-  mouseY = (e.clientY / innerHeight) * 2 - 1;
+  if (player && player.userData.type === 'tank') {
+    mouseX = (e.clientX / innerWidth) * 2 - 1;
+    mouseY = (e.clientY / innerHeight) * 2 - 1;
+  } else {
+    // Для самолета мышь задает целевой крен и тангаж
+    if (document.pointerLockElement) {
+      mouseX += e.movementX * 0.002;
+      mouseY += e.movementY * 0.002;
+      mouseX = THREE.MathUtils.clamp(mouseX, -1, 1);
+      mouseY = THREE.MathUtils.clamp(mouseY, -1, 1);
+    }
+  }
 });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousedown', e => {
   if (!state.running || !player) return;
   if (e.button === 0) tryFire();
-  if (e.button === 2) zoomed = !zoomed;
+  if (e.button === 2) {
+    zoomed = !zoomed;
+    if (player.userData.type === 'plane') {
+      document.body.requestPointerLock();
+    }
+  }
 });
 
 const clock = new THREE.Clock();
@@ -597,22 +657,32 @@ const clock = new THREE.Clock();
 function tryFire() {
   const now = performance.now() / 1000;
   if (now - player.userData.lastShot < player.userData.reloadTime) return;
+  if (player.userData.ammo <= 0) {
+    document.getElementById('reload').textContent = 'НЕТ ПАТРОНОВ';
+    document.getElementById('reload').style.color = '#f00';
+    return;
+  }
+  
   player.userData.lastShot = now;
+  player.userData.ammo--;
 
   const muzzleWorld = new THREE.Vector3();
   player.userData.muzzle.getWorldPosition(muzzleWorld);
-  const dir = new THREE.Vector3(0, 0, 1);
+  
+  const dir = new THREE.Vector3(0, 0, -1);
   const quat = new THREE.Quaternion();
-  player.userData.turret
-    ? player.userData.turret.getWorldQuaternion(quat)
-    : player.getWorldQuaternion(quat);
+  if (player.userData.type === 'tank') {
+    player.userData.turret.getWorldQuaternion(quat);
+  } else {
+    player.getWorldQuaternion(quat);
+  }
   dir.applyQuaternion(quat).normalize();
 
   const isTank = player.userData.type === 'tank';
   spawnShell(
     muzzleWorld,
     dir,
-    isTank ? 80 : 120,
+    isTank ? 100 : 200,
     isTank ? 55 : 25,
     'player'
   );
@@ -625,68 +695,68 @@ function tryFire() {
 // ============================================================
 // ФИЗИКА
 // ============================================================
-function updateTank(dt, isPlayer) {
-  const v = isPlayer ? player : null;
-  if (!v) return;
-  const ud = v.userData;
+function updateTank(dt) {
+  const ud = player.userData;
   const speed = ud.maxSpeed;
 
   let move = 0, turn = 0;
-  if (isPlayer) {
-    if (keys['KeyW']) move += 1;
-    if (keys['KeyS']) move -= 1;
-    if (keys['KeyA']) turn += 1;
-    if (keys['KeyD']) turn -= 1;
-  }
+  if (keys['KeyW']) move += 1;
+  if (keys['KeyS']) move -= 1;
+  if (keys['KeyA']) turn += 1;
+  if (keys['KeyD']) turn -= 1;
 
   const engineFactor = Math.max(0.15, ud.modules.engine / 100);
-  v.rotation.y += turn * 1.2 * dt;
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(v.quaternion);
-  v.position.addScaledVector(forward, move * speed * engineFactor * dt);
-  v.position.y = 1.5;
+  player.rotation.y += turn * 1.5 * dt;
+  
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  player.position.addScaledVector(forward, move * speed * engineFactor * dt);
+  
+  // Простое удержание над землей
+  player.position.y = 1.5;
 
-  if (isPlayer) {
-    const turret = ud.turret;
-    const tFactor = Math.max(0.1, ud.modules.turret / 100);
-    const targetRot = -mouseX * Math.PI;
-    turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetRot, 0.08 * tFactor);
-    turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, mouseY * 0.1, 0.08);
-  }
+  const turret = ud.turret;
+  const tFactor = Math.max(0.1, ud.modules.turret / 100);
+  const targetRot = -mouseX * Math.PI;
+  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetRot, 0.08 * tFactor);
+  turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, mouseY * 0.1, 0.08);
 }
 
-function updatePlane(dt, isPlayer) {
-  const v = isPlayer ? player : null;
-  if (!v) return;
-  const ud = v.userData;
+function updatePlane(dt) {
+  const ud = player.userData;
 
-  let pitch = 0, roll = 0, yaw = 0, throttle = 0;
-  if (isPlayer) {
-    if (keys['KeyW']) pitch = 1;
-    if (keys['KeyS']) pitch = -1;
-    if (keys['KeyA']) roll = 1;
-    if (keys['KeyD']) roll = -1;
-    if (keys['KeyQ']) yaw = 1;
-    if (keys['KeyE']) yaw = -1;
-    if (keys['ShiftLeft']) throttle = 1;
-    if (keys['ControlLeft']) throttle = -1;
+  // Крен и тангаж плавно стремятся к позиции мыши
+  const targetRoll = -mouseX * 1.2;
+  const targetPitch = -mouseY * 0.8;
+
+  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, targetRoll, 2.0 * dt);
+  player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 2.0 * dt);
+
+  // Автовыравнивание, если мышь в центре
+  if (Math.abs(mouseX) < 0.05) player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.0 * dt);
+  if (Math.abs(mouseY) < 0.05) player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 1.0 * dt);
+
+  // Тяга
+  let throttle = 0;
+  if (keys['KeyW']) throttle = 1;
+  if (keys['KeyS']) throttle = -1;
+  
+  const engineFactor = Math.max(0.1, ud.modules.engine / 100);
+  ud.speed += (throttle * 30 - 2) * dt;
+  ud.speed = THREE.MathUtils.clamp(ud.speed, 30, ud.maxSpeed * engineFactor);
+
+  // Движение вперед (по -Z)
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  player.position.addScaledVector(forward, ud.speed * dt);
+
+  // Гравитация (если не хватает скорости)
+  if (ud.speed < 40) {
+    player.position.y -= (40 - ud.speed) * 0.5 * dt;
   }
 
-  const engineFactor = Math.max(0.1, ud.modules.engine / 100);
-  ud.speed += (throttle * 40 - 5) * dt;
-  ud.speed = THREE.MathUtils.clamp(ud.speed, 10, ud.maxSpeed * engineFactor);
-
-  v.rotation.x += pitch * 1.2 * dt;
-  v.rotation.z += roll * 2.0 * dt;
-  v.rotation.y += yaw * 0.8 * dt;
-
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(v.quaternion);
-  v.position.addScaledVector(forward, ud.speed * dt);
-
-  v.rotation.z = THREE.MathUtils.lerp(v.rotation.z, 0, 0.01);
-
-  if (v.position.y < 3) {
-    v.position.y = 3;
-    v.rotation.x = Math.max(0, v.rotation.x);
+  // Ограничение по высоте
+  if (player.position.y < 3) {
+    player.position.y = 3;
+    player.rotation.x = Math.max(0, player.rotation.x);
   }
 }
 
@@ -698,15 +768,17 @@ function updateBots(dt) {
     if (bot.type === 'tank') {
       const toTarget = bot.target.clone().sub(bot.mesh.position);
       toTarget.y = 0;
-      if (toTarget.length() < 5 || now > bot.changeTarget) {
-        bot.target.set((Math.random()-0.5)*200, 1.5, (Math.random()-0.5)*200);
+      if (toTarget.length() < 10 || now > bot.changeTarget) {
+        bot.target.set((Math.random()-0.5)*300, 1.5, (Math.random()-0.5)*300);
         bot.changeTarget = now + 5 + Math.random()*5;
       } else {
         const dir = toTarget.normalize();
         const targetAngle = Math.atan2(dir.x, dir.z);
-        bot.mesh.rotation.y = THREE.MathUtils.lerp(bot.mesh.rotation.y, targetAngle, 0.03);
+        bot.mesh.rotation.y = THREE.MathUtils.lerp(bot.mesh.rotation.y, targetAngle, 0.05);
+        
+        const engineFactor = Math.max(0.2, ud.modules.engine / 100);
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
-        bot.mesh.position.addScaledVector(fwd, 6 * dt);
+        bot.mesh.position.addScaledVector(fwd, 10 * engineFactor * dt);
       }
 
       if (player) {
@@ -714,24 +786,26 @@ function updateBots(dt) {
         const angle = Math.atan2(toPlayer.x, toPlayer.z) - bot.mesh.rotation.y;
         ud.turret.rotation.y = THREE.MathUtils.lerp(ud.turret.rotation.y, angle, 0.05);
 
-        if (toPlayer.length() < 80 && now - bot.lastShot > 3.5) {
+        if (toPlayer.length() < 100 && now - bot.lastShot > 4.0) {
           bot.lastShot = now;
           const muzzle = new THREE.Vector3();
           ud.muzzle.getWorldPosition(muzzle);
           const dir = toPlayer.normalize();
-          spawnShell(muzzle, dir, 70, 45, 'bot');
+          // Небольшой разброс
+          dir.x += (Math.random()-0.5)*0.05;
+          dir.y += (Math.random()-0.5)*0.05;
+          spawnShell(muzzle, dir, 90, 45, 'bot');
         }
       }
     } else {
-      bot.mesh.rotation.y += 0.3 * dt;
-      bot.mesh.rotation.z = 0.4;
+      // Самолеты-боты просто летают кругами
+      bot.mesh.rotation.y += 0.2 * dt;
+      bot.mesh.rotation.z = 0.3;
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
-      bot.mesh.position.addScaledVector(fwd, 30 * dt);
-      if (bot.mesh.position.y < 20) bot.mesh.position.y = 20;
-      if (bot.mesh.position.length() > 150) {
-        bot.mesh.position.set(
-          (Math.random()-0.5)*100, 30, (Math.random()-0.5)*100
-        );
+      bot.mesh.position.addScaledVector(fwd, 50 * dt);
+      if (bot.mesh.position.y < 30) bot.mesh.position.y = 30;
+      if (bot.mesh.position.length() > 300) {
+        bot.mesh.position.set((Math.random()-0.5)*200, 50, (Math.random()-0.5)*200);
       }
     }
   }
@@ -750,7 +824,7 @@ function updateShells(dt) {
       continue;
     }
     if (s.life <= 0 || s.mesh.position.y < 0) {
-      if (s.mesh.position.y < 0) spawnParticle(s.mesh.position, 0x886644, 0.3, 0.3);
+      if (s.mesh.position.y < 0) spawnParticle(s.mesh.position, 0x886644, 0.5, 0.3);
       scene.remove(s.mesh);
       shells.splice(i, 1);
     }
@@ -763,7 +837,7 @@ function updateParticles(dt) {
     p.life -= dt;
     p.mesh.position.addScaledVector(p.velocity, dt);
     p.mesh.material.opacity = Math.max(0, p.life / p.maxLife);
-    p.mesh.scale.setScalar(1 + (1 - p.life/p.maxLife) * 2);
+    p.mesh.scale.setScalar(1 + (1 - p.life/p.maxLife) * 3);
     if (p.life <= 0) {
       scene.remove(p.mesh);
       particles.splice(i, 1);
@@ -780,8 +854,8 @@ function updateCamera(dt) {
 
   if (isTank) {
     const back = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
-    const dist = zoomed ? 8 : 14;
-    const height = zoomed ? 4 : 7;
+    const dist = zoomed ? 10 : 18;
+    const height = zoomed ? 5 : 8;
     const targetPos = player.position.clone()
       .addScaledVector(back, dist)
       .add(new THREE.Vector3(0, height, 0));
@@ -789,14 +863,17 @@ function updateCamera(dt) {
     const lookAt = player.position.clone().add(new THREE.Vector3(0, 2, 0));
     camera.lookAt(lookAt);
   } else {
+    // Камера сзади и чуть сверху
     const back = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
     const targetPos = player.position.clone()
-      .addScaledVector(back, 12)
-      .addScaledVector(up, 3);
+      .addScaledVector(back, 15)
+      .addScaledVector(up, 4);
     camera.position.lerp(targetPos, 0.15);
+    
+    // Смотрим вперед
     const lookAt = player.position.clone()
-      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 10);
+      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 20);
     camera.lookAt(lookAt);
     camera.up.copy(up);
   }
@@ -814,10 +891,9 @@ function updateHUD() {
   const status = document.getElementById('status');
   status.innerHTML = `
     ${state.nation === 'ussr' ? 'СССР' : 'Германия'} · ${ud.type === 'tank' ? 'Танк' : 'Самолёт'}<br>
-    HP: ${Math.max(0, Math.round(ud.health))}<br>
+    HP: ${Math.max(0, Math.round(ud.health))} | Счёт: ${state.score}<br>
     Двигатель: ${Math.max(0, Math.round(ud.modules.engine))}%<br>
-    Башня/Орудие: ${Math.max(0, Math.round(ud.modules.turret || ud.modules.gun))}%<br>
-    Счёт: ${state.score}
+    ${ud.type === 'tank' ? `Башня: ${Math.max(0, Math.round(ud.modules.turret))}%` : `Крыло: ${Math.max(0, Math.round(ud.modules.wing))}%`}
   `;
 
   const now = performance.now() / 1000;
@@ -831,20 +907,36 @@ function updateHUD() {
     reloadEl.style.color = '#0f0';
   }
 
-  document.getElementById('topinfo').textContent =
-    `Врагов: ${bots.length} · Счёт: ${state.score}`;
+  const ammoEl = document.getElementById('ammo');
+  ammoEl.textContent = ud.ammo;
+  if (ud.ammo < ud.maxAmmo * 0.2) ammoEl.classList.add('low');
+  else ammoEl.classList.remove('low');
 
+  document.getElementById('topinfo').textContent =
+    `Цель: ${state.kills} / ${state.targetKills} фрагов`;
+
+  // Мини-карта
   mctx.clearRect(0, 0, 180, 180);
   mctx.fillStyle = 'rgba(0,40,0,0.6)';
   mctx.fillRect(0, 0, 180, 180);
-  const scale = 180 / 300;
+  const scale = 180 / 400;
   const cx = 90, cz = 90;
 
-  mctx.fillStyle = '#0f0';
+  // Точки захвата
+  mctx.fillStyle = 'rgba(0,255,0,0.5)';
+  for (const cp of state.capturePoints) {
+    mctx.beginPath();
+    mctx.arc(cx + cp.pos.x * scale, cz + cp.pos.z * scale, 6, 0, Math.PI*2);
+    mctx.fill();
+  }
+
+  // Игрок
+  mctx.fillStyle = '#fff';
   mctx.beginPath();
   mctx.arc(cx + player.position.x * scale, cz + player.position.z * scale, 4, 0, Math.PI*2);
   mctx.fill();
 
+  // Враги
   mctx.fillStyle = '#f00';
   for (const b of bots) {
     mctx.beginPath();
@@ -861,8 +953,8 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (state.running && player) {
-    if (player.userData.type === 'tank') updateTank(dt, true);
-    else updatePlane(dt, true);
+    if (player.userData.type === 'tank') updateTank(dt);
+    else updatePlane(dt);
 
     updateBots(dt);
     updateShells(dt);
@@ -871,7 +963,7 @@ function animate() {
     updateHUD();
 
     if (player.userData.type === 'plane' && player.userData.prop) {
-      player.userData.prop.rotation.z += 30 * dt;
+      player.userData.prop.rotation.z += 50 * dt;
     }
   }
 
@@ -904,73 +996,37 @@ document.querySelectorAll('#mapRow .btn').forEach(b => {
   };
 });
 
-function startGame(mode) {
-  state.mode = mode;
+function startGame() {
   state.running = true;
   state.score = 0;
+  state.kills = 0;
   document.getElementById('menu').style.display = 'none';
+  document.getElementById('end-screen').style.display = 'none';
 
   loadMap(state.mapIndex);
   spawnPlayer();
-  spawnBots(mode === 'sp' ? 8 : 4);
-
-  if (mode === 'mp') {
-    connectMultiplayer();
-  }
+  spawnBots(15);
 }
 
-document.getElementById('startBtn').onclick = () => startGame('sp');
-document.getElementById('mpBtn').onclick = () => startGame('mp');
-
-// ============================================================
-// МУЛЬТИПЛЕЕР (WebSocket)
-// ============================================================
-function connectMultiplayer() {
-  const log = document.getElementById('log');
-  const msg = document.createElement('div');
-  msg.textContent = 'Подключение к серверу мультиплеера...';
-  log.prepend(msg);
-
-  try {
-    // Замените на ваш сервер
-    state.ws = new WebSocket('wss://your-server.example.com/ws');
-  } catch (e) {
-    msg.textContent = 'Мультиплеер недоступен (нет сервера). Играем с ботами.';
-    return;
-  }
-
-  state.ws.onopen = () => {
-    msg.textContent = 'Подключено к серверу мультиплеера!';
-    state.ws.send(JSON.stringify({ type: 'join', nation: state.nation, vtype: state.type }));
-  };
-  state.ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data.type === 'state') {
-        // Обновление других игроков (упрощённо)
-      }
-    } catch (_) {}
-  };
-  state.ws.onerror = () => {
-    msg.textContent = 'Ошибка мультиплеера. Играем с ботами.';
-  };
-  state.ws.onclose = () => {
-    const m = document.createElement('div');
-    m.textContent = 'Соединение закрыто.';
-    log.prepend(m);
-  };
+function endGame(win) {
+  state.running = false;
+  document.exitPointerLock();
+  const end = document.getElementById('end-screen');
+  end.style.display = 'flex';
+  document.getElementById('end-title').textContent = win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
+  document.getElementById('end-stats').textContent = `Уничтожено: ${state.kills}`;
 }
 
-setInterval(() => {
-  if (state.ws && state.ws.readyState === 1 && player) {
-    state.ws.send(JSON.stringify({
-      type: 'pos',
-      x: player.position.x, y: player.position.y, z: player.position.z,
-      ry: player.rotation.y, rx: player.rotation.x, rz: player.rotation.z,
-      score: state.score,
-    }));
-  }
-}, 100);
+document.getElementById('startBtn').onclick = () => startGame();
+document.getElementById('restartBtn').onclick = () => {
+  scene.remove(player);
+  player = null;
+  bots.forEach(b => scene.remove(b.mesh));
+  bots = [];
+  shells.forEach(s => scene.remove(s.mesh));
+  shells.length = 0;
+  document.getElementById('menu').style.display = 'flex';
+};
 
 // ============================================================
 // СТАРТ
