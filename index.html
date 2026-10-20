@@ -84,6 +84,7 @@
     pointer-events: all; z-index: 20; color: #0f0; gap: 20px;
   }
   #end-screen h2 { font-size: 64px; text-shadow: 0 0 20px #0f0; }
+  #end-screen.defeat h2 { color: #f00; text-shadow: 0 0 20px #f00; }
 
   .world-marker {
     position: absolute; transform: translate(-50%, -50%);
@@ -139,8 +140,8 @@
     <button class="btn" id="startBtn">В бой!</button>
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
-    Танк: WASD — движение, Мышь — прицел, Колесико — зум, ЛКМ — огонь<br>
-    Самолёт: Кликните для захвата мыши, Мышь — пилотаж, W/S — скорость, ЛКМ — огонь
+    Танк: WASD — движение, Мышь — прицел, ЛКМ — огонь<br>
+    Самолёт: WASD — пилотаж (W/S нос, A/D крен), Q/E — рыскание, Пробел — огонь
   </p>
 </div>
 
@@ -368,7 +369,7 @@ function loadMap(idx) {
 }
 
 // ============================================================
-// МОДЕЛИ (СТВОЛ И НОС СМОТРЯТ В -Z)
+// МОДЕЛИ
 // ============================================================
 function makeTank(nation) {
   const g = new THREE.Group();
@@ -376,7 +377,6 @@ function makeTank(nation) {
   const hullColor = isUSSR ? 0x3a4a2a : 0x4a4030;
   const turretColor = isUSSR ? 0x2a3a1a : 0x3a3020;
 
-  // Гусеницы
   for (const side of [-1.8, 1.8]) {
     const track = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 1.4, 6.5),
@@ -387,7 +387,6 @@ function makeTank(nation) {
     g.add(track);
   }
 
-  // Корпус
   const hull = new THREE.Mesh(
     new THREE.BoxGeometry(3.2, 1.0, 6),
     new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.85, metalness: 0.2 })
@@ -396,7 +395,6 @@ function makeTank(nation) {
   hull.castShadow = true; hull.receiveShadow = true;
   g.add(hull);
 
-  // Лоб (в -Z)
   const frontPlate = new THREE.Mesh(
     new THREE.BoxGeometry(3.2, 1.2, 0.2),
     new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.8 })
@@ -406,7 +404,6 @@ function makeTank(nation) {
   frontPlate.castShadow = true;
   g.add(frontPlate);
 
-  // Башня
   const turret = new THREE.Group();
   turret.position.set(0, 1.8, -0.5);
 
@@ -450,7 +447,6 @@ function makeTank(nation) {
   muzzleBrake.position.set(0, 0, -1.5 - barrelLen);
   turret.add(muzzleBrake);
 
-  // Точка вылета снаряда строго в конце ствола
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0, -1.7 - barrelLen);
   turret.add(muzzle);
@@ -539,10 +535,16 @@ function makePlane(nation) {
   g.userData.health = 80;
   g.userData.lastShot = 0;
   g.userData.reloadTime = 0.1;
-  g.userData.speed = 80;
-  g.userData.maxSpeed = 180;
+  g.userData.speed = 100;
+  g.userData.maxSpeed = 200;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
+  
+  // Углы для управления WASD
+  g.userData.pitchRate = 0;
+  g.userData.rollRate = 0;
+  g.userData.yawRate = 0;
+  
   return g;
 }
 
@@ -655,12 +657,60 @@ function getArmorAtPoint(vehicle, worldPoint) {
 }
 
 function handleHit(shell) {
-  for (const bot of bots) {
-    const box = new THREE.Box3().setFromObject(bot.mesh);
+  // Проверка попадания в ботов (если стреляет игрок)
+  if (shell.owner === 'player') {
+    for (const bot of bots) {
+      const box = new THREE.Box3().setFromObject(bot.mesh);
+      if (box.containsPoint(shell.mesh.position)) {
+        const armorInfo = getArmorAtPoint(bot.mesh, shell.mesh.position);
+        const shellDir = shell.velocity.clone().normalize();
+        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
+        const angle = Math.abs(shellDir.dot(armorNormal));
+        const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
+
+        const penetrated = shell.damage > effectiveArmor;
+        const log = document.getElementById('log');
+        const msg = document.createElement('div');
+        
+        if (penetrated) {
+          bot.health -= shell.damage * 0.6;
+          bot.mesh.userData.modules[armorInfo.module] -= shell.damage;
+          spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
+          msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
+          msg.style.color = '#ff6600';
+          
+          const hpFill = bot.ui.querySelector('.hp-fill');
+          if (hpFill) hpFill.style.width = Math.max(0, (bot.health / 100) * 100) + '%';
+
+          if (bot.health <= 0) {
+            scene.remove(bot.mesh);
+            if (bot.ui.parentNode) bot.ui.parentNode.removeChild(bot.ui);
+            bots.splice(bots.indexOf(bot), 1);
+            state.score += 100;
+            state.kills++;
+            msg.textContent = `УНИЧТОЖЕН! +100`;
+            msg.style.color = '#ffff00';
+            
+            if (state.kills >= state.targetKills) endGame(true);
+          }
+        } else {
+          spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
+          msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`;
+          msg.style.color = '#aaaaaa';
+        }
+        log.prepend(msg);
+        while (log.children.length > 6) log.removeChild(log.lastChild);
+        return true;
+      }
+    }
+  } 
+  // Проверка попадания в игрока (если стреляют боты)
+  else if (shell.owner === 'bot' && player) {
+    const box = new THREE.Box3().setFromObject(player);
     if (box.containsPoint(shell.mesh.position)) {
-      const armorInfo = getArmorAtPoint(bot.mesh, shell.mesh.position);
+      const armorInfo = getArmorAtPoint(player, shell.mesh.position);
       const shellDir = shell.velocity.clone().normalize();
-      const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
+      const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
       const angle = Math.abs(shellDir.dot(armorNormal));
       const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
 
@@ -669,25 +719,15 @@ function handleHit(shell) {
       const msg = document.createElement('div');
       
       if (penetrated) {
-        bot.health -= shell.damage * 0.6;
-        bot.mesh.userData.modules[armorInfo.module] -= shell.damage;
-        spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
-        msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
-        msg.style.color = '#ff6600';
+        player.userData.health -= shell.damage * 0.6;
+        player.userData.modules[armorInfo.module] -= shell.damage;
+        spawnParticle(shell.mesh.position, 0xff0000, 1.5, 0.4);
+        msg.textContent = `ВАС ПРОБИЛИ в ${armorInfo.zone}!`;
+        msg.style.color = '#ff0000';
         
-        const hpFill = bot.ui.querySelector('.hp-fill');
-        if (hpFill) hpFill.style.width = Math.max(0, (bot.health / 100) * 100) + '%';
-
-        if (bot.health <= 0) {
-          scene.remove(bot.mesh);
-          if (bot.ui.parentNode) bot.ui.parentNode.removeChild(bot.ui);
-          bots.splice(bots.indexOf(bot), 1);
-          state.score += 100;
-          state.kills++;
-          msg.textContent = `УНИЧТОЖЕН! +100`;
-          msg.style.color = '#ffff00';
-          
-          if (state.kills >= state.targetKills) endGame(true);
+        if (player.userData.health <= 0) {
+          msg.textContent = `ВАС УНИЧТОЖИЛИ!`;
+          endGame(false);
         }
       } else {
         spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
@@ -706,28 +746,23 @@ function handleHit(shell) {
 // УПРАВЛЕНИЕ И ФИЗИКА
 // ============================================================
 const keys = {};
-addEventListener('keydown', e => { keys[e.code] = true; });
+addEventListener('keydown', e => { 
+  keys[e.code] = true; 
+  if (e.code === 'Space' && player && player.userData.type === 'plane' && !state.isPreparePhase) {
+    tryFire();
+  }
+});
 addEventListener('keyup', e => { keys[e.code] = false; });
 
 let targetMouseX = 0, targetMouseY = 0;
 let currentMouseX = 0, currentMouseY = 0;
 let cameraZoom = 1.0;
 
-document.body.addEventListener('click', () => {
-  if (state.running && player && player.userData.type === 'plane') {
-    document.body.requestPointerLock();
-  }
-});
-
 addEventListener('mousemove', e => {
   if (player && player.userData.type === 'tank') {
+    // Мышь напрямую управляет прицелом
     targetMouseX = (e.clientX / innerWidth) * 2 - 1;
     targetMouseY = (e.clientY / innerHeight) * 2 - 1;
-  } else if (player && player.userData.type === 'plane' && document.pointerLockElement) {
-    targetMouseX += e.movementX * 0.0015;
-    targetMouseY += e.movementY * 0.0015;
-    targetMouseX = THREE.MathUtils.clamp(targetMouseX, -1, 1);
-    targetMouseY = THREE.MathUtils.clamp(targetMouseY, -1, 1);
   }
 });
 
@@ -761,7 +796,6 @@ function tryFire() {
   const muzzleWorld = new THREE.Vector3();
   player.userData.muzzle.getWorldPosition(muzzleWorld);
   
-  // Стреляем туда, куда смотрит ствол (-Z)
   const dir = new THREE.Vector3(0, 0, -1);
   const quat = new THREE.Quaternion();
   if (player.userData.type === 'tank') {
@@ -788,7 +822,6 @@ function updateTank(dt) {
   if (keys['KeyD']) turn -= 1;
 
   const engineFactor = Math.max(0.15, ud.modules.engine / 100);
-  
   player.rotation.y += turn * 1.5 * dt;
   
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -804,64 +837,65 @@ function updateTank(dt) {
   const turret = ud.turret;
   const tFactor = Math.max(0.1, ud.modules.turret / 100);
   
-  // Локальный угол
   const localYaw = -currentMouseX * Math.PI - player.rotation.y;
   
   turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, localYaw, 10 * dt * tFactor);
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, currentMouseY * 0.15, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА ===
+// === ЛОГИКА САМОЛЕТА (WASD) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  let pitchInput = targetMouseY;
-  let rollInput = -targetMouseX;
+  // Управление WASD
+  let pitchInput = 0;
+  let rollInput = 0;
+  let yawInput = 0;
 
-  if (!document.pointerLockElement) {
-    rollInput = 0;
-    pitchInput = 0;
-  }
+  if (keys['KeyW']) pitchInput = 1;   // Нос вверх
+  if (keys['KeyS']) pitchInput = -1;  // Нос вниз
+  if (keys['KeyA']) rollInput = 1;    // Крен влево
+  if (keys['KeyD']) rollInput = -1;   // Крен вправо
+  if (keys['KeyQ']) yawInput = 1;     // Рыскание влево
+  if (keys['KeyE']) yawInput = -1;    // Рыскание вправо
 
-  // Сглаженное управление
-  const pitchSpeed = 1.5;
-  const rollSpeed = 2.5;
+  // Сглаживание угловых скоростей
+  ud.pitchRate = THREE.MathUtils.lerp(ud.pitchRate, pitchInput * 1.5, 5 * dt);
+  ud.rollRate = THREE.MathUtils.lerp(ud.rollRate, rollInput * 2.5, 5 * dt);
+  ud.yawRate = THREE.MathUtils.lerp(ud.yawRate, yawInput * 0.8, 5 * dt);
 
-  player.rotation.x += pitchInput * pitchSpeed * dt;
-  player.rotation.z += rollInput * rollSpeed * dt;
-  
+  player.rotation.x += ud.pitchRate * dt;
+  player.rotation.z += ud.rollRate * dt;
+  player.rotation.y += ud.yawRate * dt;
+
+  // Ограничения, чтобы не улететь в штопор
   player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
 
-  // Автовыравнивание
-  if (Math.abs(targetMouseX) < 0.1) {
-    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
-  }
-  if (Math.abs(targetMouseY) < 0.1) {
-    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 1.0 * dt);
+  // Автовыравнивание крена, если нет ввода
+  if (rollInput === 0) {
+    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.0 * dt);
   }
 
+  // Тяга
   let throttle = 0;
-  if (keys['KeyW']) throttle = 1;
-  if (keys['KeyS']) throttle = -1;
+  if (keys['ShiftLeft']) throttle = 1;
+  if (keys['ControlLeft']) throttle = -1;
   
   const engineFactor = Math.max(0.1, ud.modules.engine / 100);
-  ud.speed += (throttle * 40 - 5) * dt;
+  ud.speed += (throttle * 50 - 5) * dt;
   ud.speed = THREE.MathUtils.clamp(ud.speed, 60, ud.maxSpeed * engineFactor);
 
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
   // Гравитация
-  if (ud.speed < 80) player.position.y -= (80 - ud.speed) * 0.5 * dt;
+  if (ud.speed < 100) player.position.y -= (100 - ud.speed) * 0.5 * dt;
 
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
     player.rotation.x = Math.max(0, player.rotation.x);
   }
-  
-  targetMouseX *= 0.9;
-  targetMouseY *= 0.9;
 }
 
 function updateBots(dt) {
@@ -902,7 +936,7 @@ function updateBots(dt) {
           const dir = toPlayer.normalize();
           dir.x += (Math.random()-0.5)*0.05;
           dir.y += (Math.random()-0.5)*0.05;
-          spawnShell(muzzle, dir, 200, 45, 'bot');
+          spawnShell(muzzle, dir, 200, 45, 'bot'); // Теперь 'bot' наносит урон игроку
         }
       }
     } else {
@@ -926,7 +960,7 @@ function updateShells(dt) {
     s.mesh.position.addScaledVector(s.velocity, dt);
     s.life -= dt;
 
-    if (s.owner === 'player' && handleHit(s)) {
+    if (handleHit(s)) {
       scene.remove(s.mesh);
       shells.splice(i, 1);
       continue;
@@ -954,14 +988,14 @@ function updateParticles(dt) {
 }
 
 // ============================================================
-// КАМЕРА (СТРОГО СЗАДИ СТВОЛА)
+// КАМЕРА
 // ============================================================
 function updateCamera(dt) {
   if (!player) return;
   const isTank = player.userData.type === 'tank';
 
   if (isTank) {
-    // Позиция и направление ствола
+    // Берем позицию и направление ствола
     const muzzleWorld = new THREE.Vector3();
     player.userData.muzzle.getWorldPosition(muzzleWorld);
     
@@ -974,14 +1008,13 @@ function updateCamera(dt) {
     const camDist = 15 * cameraZoom;
     const camHeight = 4 * cameraZoom;
     
-    // Камера = конец ствола - направление * дистанция + высота
     const camPos = muzzleWorld.clone()
       .addScaledVector(dir, -camDist)
       .add(new THREE.Vector3(0, camHeight, 0));
     
     camera.position.lerp(camPos, 15 * dt);
     
-    // Смотрим на 100 метров вперед по стволу
+    // Смотрим строго по стволу
     const lookAtPos = muzzleWorld.clone().addScaledVector(dir, 100);
     camera.lookAt(lookAtPos);
   } else {
@@ -1175,7 +1208,15 @@ function endGame(win) {
   document.exitPointerLock();
   const end = document.getElementById('end-screen');
   end.style.display = 'flex';
-  document.getElementById('end-title').textContent = win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
+  
+  if (win) {
+    end.classList.remove('defeat');
+    document.getElementById('end-title').textContent = 'ПОБЕДА';
+  } else {
+    end.classList.add('defeat');
+    document.getElementById('end-title').textContent = 'ПОРАЖЕНИЕ';
+  }
+  
   document.getElementById('end-stats').textContent = `Уничтожено: ${state.kills}`;
 }
 
