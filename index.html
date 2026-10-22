@@ -9,7 +9,7 @@
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   
-  /* Обычный прицел */
+  /* Прицел */
   #crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
@@ -22,7 +22,7 @@
   #crosshair::before { width: 2px; height: 10px; top: -15px; }
   #crosshair::after { width: 2px; height: 10px; bottom: -15px; }
   
-  /* Снайперский прицел (оптика) */
+  /* Оптика */
   #sniper-scope {
     position: absolute; inset: 0; display: none; z-index: 6;
     pointer-events: none;
@@ -53,7 +53,7 @@
   .scope-scale div.long { height: 10px; width: 2px; }
   .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
 
-  /* Общий интерфейс (HUD) */
+  /* HUD */
   #hud-bottom {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -82,11 +82,9 @@
   #menu, #z-menu {
     position: absolute; inset: 0; background: rgba(0,0,0,0.9);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 10; color: #0f0; gap: 16px;
-    cursor: default;
+    pointer-events: all; z-index: 10; color: #0f0; gap: 16px; cursor: default;
   }
   #z-menu { display: none; background: rgba(0,0,0,0.7); z-index: 15; cursor: default; }
-  #z-menu h2 { font-size: 32px; margin-bottom: 20px; }
   .btn {
     pointer-events: all; cursor: pointer; background: transparent;
     border: 2px solid #0f0; color: #0f0; padding: 12px 40px;
@@ -196,7 +194,7 @@
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
     Танк: WASD — движение, Мышь — башня, ЛКМ — огонь, Shift — оптика<br>
-    Самолёт: WASD — пилотаж, Пробел — огонь
+    Самолёт: Мышь — направление, W/S — скорость, ЛКМ — огонь
   </p>
 </div>
 
@@ -231,6 +229,8 @@ const state = {
   capturePoints: [],
   isSniperMode: false,
   isZMenuOpen: false,
+  allies: [],
+  enemies: [],
 };
 
 // ============================================================
@@ -602,9 +602,6 @@ function makePlane(nation) {
   g.userData.maxSpeed = 200;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
-  g.userData.pitchRate = 0;
-  g.userData.rollRate = 0;
-  g.userData.yawRate = 0;
   return g;
 }
 
@@ -616,7 +613,6 @@ function makeVehicle(nation, type) {
 // ИГРОК И БОТЫ
 // ============================================================
 let player = null;
-let bots = [];
 const shells = [];
 const particles = [];
 
@@ -627,11 +623,42 @@ function spawnPlayer() {
   scene.add(player);
 }
 
-function spawnBots(count) {
-  bots.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
-  bots = [];
+function spawnBots() {
+  // Очистка старых ботов
+  state.allies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
+  state.enemies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
+  state.allies = [];
+  state.enemies = [];
   
-  for (let i = 0; i < count; i++) {
+  // Спавн союзников (синие)
+  for (let i = 0; i < 4; i++) {
+    const type = Math.random() < 0.3 ? 'plane' : 'tank';
+    const mesh = makeVehicle(state.nation, type);
+    
+    // Спавн рядом с игроком
+    const x = (Math.random() - 0.5) * 50;
+    const z = (Math.random() - 0.5) * 50;
+    const y = type === 'plane' ? 200 : getTerrainHeight(x, z) + 1.2;
+    
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    
+    const ui = document.createElement('div');
+    ui.className = 'world-marker';
+    ui.innerHTML = `<span style="color:#00f">${state.nation === 'ussr' ? 'СССР' : 'Герм'}</span><div class="hp-bar"><div class="hp-fill" style="background:#00f;"></div></div>`;
+    document.getElementById('markers-container').appendChild(ui);
+
+    state.allies.push({
+      mesh, type, ui,
+      health: mesh.userData.health,
+      lastShot: 0,
+      target: new THREE.Vector3((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000),
+      changeTarget: 0,
+    });
+  }
+
+  // Спавн врагов (красные)
+  for (let i = 0; i < 10; i++) {
     const nation = state.nation === 'ussr' ? 'germany' : 'ussr';
     const type = Math.random() < 0.4 ? 'plane' : 'tank';
     const mesh = makeVehicle(nation, type);
@@ -654,7 +681,7 @@ function spawnBots(count) {
     ui.innerHTML = `<span style="color:#f00">${nation === 'ussr' ? 'СССР' : 'Герм'}</span><div class="hp-bar"><div class="hp-fill"></div></div>`;
     document.getElementById('markers-container').appendChild(ui);
 
-    bots.push({
+    state.enemies.push({
       mesh, type, ui,
       health: mesh.userData.health,
       lastShot: 0,
@@ -665,7 +692,7 @@ function spawnBots(count) {
 }
 
 // ============================================================
-// СНАРЯДЫ
+// СНАРЯДЫ И ЧАСТИЦЫ
 // ============================================================
 function spawnShell(origin, direction, speed, damage, owner) {
   const isAP = damage > 30;
@@ -717,13 +744,14 @@ function getArmorAtPoint(vehicle, worldPoint) {
 }
 
 function handleHit(shell) {
+  // Игрок попал
   if (shell.owner === 'player') {
-    for (const bot of bots) {
-      const box = new THREE.Box3().setFromObject(bot.mesh);
+    for (const enemy of state.enemies) {
+      const box = new THREE.Box3().setFromObject(enemy.mesh);
       if (box.containsPoint(shell.mesh.position)) {
-        const armorInfo = getArmorAtPoint(bot.mesh, shell.mesh.position);
+        const armorInfo = getArmorAtPoint(enemy.mesh, shell.mesh.position);
         const shellDir = shell.velocity.clone().normalize();
-        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
+        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.mesh.quaternion);
         const angle = Math.abs(shellDir.dot(armorNormal));
         const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
 
@@ -732,19 +760,19 @@ function handleHit(shell) {
         const msg = document.createElement('div');
         
         if (penetrated) {
-          bot.health -= shell.damage * 0.6;
-          bot.mesh.userData.modules[armorInfo.module] -= shell.damage;
+          enemy.health -= shell.damage * 0.6;
+          enemy.mesh.userData.modules[armorInfo.module] -= shell.damage;
           spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
           msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
           msg.style.color = '#ff6600';
           
-          const hpFill = bot.ui.querySelector('.hp-fill');
-          if (hpFill) hpFill.style.width = Math.max(0, (bot.health / 100) * 100) + '%';
+          const hpFill = enemy.ui.querySelector('.hp-fill');
+          if (hpFill) hpFill.style.width = Math.max(0, (enemy.health / 100) * 100) + '%';
 
-          if (bot.health <= 0) {
-            scene.remove(bot.mesh);
-            if (bot.ui.parentNode) bot.ui.parentNode.removeChild(bot.ui);
-            bots.splice(bots.indexOf(bot), 1);
+          if (enemy.health <= 0) {
+            scene.remove(enemy.mesh);
+            if (enemy.ui.parentNode) enemy.ui.parentNode.removeChild(enemy.ui);
+            state.enemies.splice(state.enemies.indexOf(enemy), 1);
             state.score += 100;
             state.kills++;
             msg.textContent = `УНИЧТОЖЕН! +100`;
@@ -762,46 +790,51 @@ function handleHit(shell) {
         return true;
       }
     }
-  } 
-  else if (shell.owner === 'bot' && player) {
-    const box = new THREE.Box3().setFromObject(player);
-    if (box.containsPoint(shell.mesh.position)) {
-      const armorInfo = getArmorAtPoint(player, shell.mesh.position);
-      const shellDir = shell.velocity.clone().normalize();
-      const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
-      const angle = Math.abs(shellDir.dot(armorNormal));
-      const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
+  }
+  // Враг попал в союзника или игрока
+  else if (shell.owner === 'enemy') {
+    const targets = [player, ...state.allies.map(a => a.mesh)];
+    for (const target of targets) {
+      if (!target) continue;
+      const box = new THREE.Box3().setFromObject(target);
+      if (box.containsPoint(shell.mesh.position)) {
+        const armorInfo = getArmorAtPoint(target, shell.mesh.position);
+        const shellDir = shell.velocity.clone().normalize();
+        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(target.quaternion);
+        const angle = Math.abs(shellDir.dot(armorNormal));
+        const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
 
-      const penetrated = shell.damage > effectiveArmor;
-      const log = document.getElementById('log');
-      const msg = document.createElement('div');
-      
-      if (penetrated) {
-        player.userData.health -= shell.damage * 0.6;
-        player.userData.modules[armorInfo.module] -= shell.damage;
-        spawnParticle(shell.mesh.position, 0xff0000, 1.5, 0.4);
-        msg.textContent = `ВАС ПРОБИЛИ в ${armorInfo.zone}!`;
-        msg.style.color = '#ff0000';
+        const penetrated = shell.damage > effectiveArmor;
+        const log = document.getElementById('log');
+        const msg = document.createElement('div');
         
-        if (player.userData.health <= 0) {
-          msg.textContent = `ВАС УНИЧТОЖИЛИ!`;
-          endGame(false);
+        if (penetrated) {
+          target.userData.health -= shell.damage * 0.6;
+          target.userData.modules[armorInfo.module] -= shell.damage;
+          spawnParticle(shell.mesh.position, 0xff0000, 1.5, 0.4);
+          msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
+          msg.style.color = '#ff0000';
+          
+          if (target === player && target.userData.health <= 0) {
+            msg.textContent = `ВАС УНИЧТОЖИЛИ!`;
+            endGame(false);
+          }
+        } else {
+          spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
+          msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`;
+          msg.style.color = '#aaaaaa';
         }
-      } else {
-        spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
-        msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`;
-        msg.style.color = '#aaaaaa';
+        log.prepend(msg);
+        while (log.children.length > 6) log.removeChild(log.lastChild);
+        return true;
       }
-      log.prepend(msg);
-      while (log.children.length > 6) log.removeChild(log.lastChild);
-      return true;
     }
   }
   return false;
 }
 
 // ============================================================
-// УПРАВЛЕНИЕ И ФИЗИКА (POINTER LOCK)
+// УПРАВЛЕНИЕ
 // ============================================================
 const keys = {};
 addEventListener('keydown', e => { 
@@ -832,24 +865,34 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Фиксация курсора
 document.body.addEventListener('click', () => {
   if (state.running && !state.isZMenuOpen && !state.isPreparePhase) {
     document.body.requestPointerLock();
   }
 });
 
-// Обработка движения мыши при захвате
+// Данные для танка
 let targetYaw = 0;
 let targetPitch = 0;
+
+// Данные для самолета
+let planeTargetPitch = 0;
+let planeTargetRoll = 0;
 
 addEventListener('mousemove', e => {
   if (document.pointerLockElement === document.body && state.running && !state.isPreparePhase) {
     if (player.userData.type === 'tank') {
-      // Поворот башни строго по движению мыши (без привязки к экрану)
       targetYaw -= e.movementX * 0.002;
       targetPitch -= e.movementY * 0.002;
       targetPitch = THREE.MathUtils.clamp(targetPitch, -0.15, 0.15);
+    } else {
+      // Управление самолетом как в WT (мышь двигает самолет)
+      planeTargetPitch -= e.movementY * 0.003;
+      planeTargetRoll -= e.movementX * 0.003;
+      
+      // Ограничиваем углы
+      planeTargetPitch = THREE.MathUtils.clamp(planeTargetPitch, -Math.PI/3, Math.PI/3);
+      planeTargetRoll = THREE.MathUtils.clamp(planeTargetRoll, -Math.PI/2, Math.PI/2);
     }
   }
 });
@@ -914,118 +957,130 @@ function updateTank(dt) {
   const turret = ud.turret;
   const tFactor = Math.max(0.1, ud.modules.turret / 100);
   
-  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetYaw, 10 * dt * tFactor);
+  // Башня следует за мышью (без привязки к повороту корпуса, так как мышь уже задает абсолютный угол)
+  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetYaw - player.rotation.y, 10 * dt * tFactor);
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА (WASD, плавная) ===
+// === ЛОГИКА САМОЛЕТА (WAR THUNDER STYLE) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  let pitchInput = 0, rollInput = 0, yawInput = 0;
-
-  if (keys['KeyW']) pitchInput = 1;
-  if (keys['KeyS']) pitchInput = -1;
-  if (keys['KeyA']) rollInput = 1;
-  if (keys['KeyD']) rollInput = -1;
-  if (keys['KeyQ']) yawInput = 1;
-  if (keys['KeyE']) yawInput = -1;
-
-  // Плавное сглаживание (устраняет дерганье)
-  ud.pitchRate = THREE.MathUtils.lerp(ud.pitchRate, pitchInput * 1.5, 5 * dt);
-  ud.rollRate = THREE.MathUtils.lerp(ud.rollRate, rollInput * 2.0, 5 * dt);
-  ud.yawRate = THREE.MathUtils.lerp(ud.yawRate, yawInput * 0.6, 5 * dt);
-
-  player.rotation.x += ud.pitchRate * dt;
-  player.rotation.z += ud.rollRate * dt;
-  player.rotation.y += ud.yawRate * dt;
-
-  // Ограничения
-  player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
-
-  // Автовыравнивание крена
-  if (rollInput === 0) {
-    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.5 * dt);
+  // Плавное стремление к целевым углам (мышь)
+  player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, planeTargetPitch, 2.0 * dt);
+  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, planeTargetRoll, 2.0 * dt);
+  
+  // Автовыравнивание если мышь в центре
+  if (Math.abs(planeTargetRoll) < 0.05) {
+    planeTargetRoll = THREE.MathUtils.lerp(planeTargetRoll, 0, 2.0 * dt);
+  }
+  if (Math.abs(planeTargetPitch) < 0.05) {
+    planeTargetPitch = THREE.MathUtils.lerp(planeTargetPitch, 0, 2.0 * dt);
   }
 
   // Тяга
   let throttle = 0;
-  if (keys['ShiftLeft']) throttle = 1;
-  if (keys['ControlLeft']) throttle = -1;
+  if (keys['KeyW']) throttle = 1;
+  if (keys['KeyS']) throttle = -1;
   
   const engineFactor = Math.max(0.1, ud.modules.engine / 100);
-  ud.speed += (throttle * 50 - 3) * dt; // Легкая потеря скорости без газа
+  ud.speed += (throttle * 50 - 3) * dt;
   ud.speed = THREE.MathUtils.clamp(ud.speed, 70, ud.maxSpeed * engineFactor);
 
-  // Движение
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  // Мягкая гравитация (тянет вниз только на низкой скорости)
   if (ud.speed < 90) player.position.y -= (90 - ud.speed) * 0.3 * dt;
 
-  // Столкновение с землей
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
-    // Выравнивание при касании земли
     player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 5 * dt);
     player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 5 * dt);
   }
 }
 
+// === ЛОГИКА БОТОВ ===
 function updateBots(dt) {
   if (state.isPreparePhase) return;
 
   const now = performance.now() / 1000;
-  for (const bot of bots) {
-    const ud = bot.mesh.userData;
+  
+  // Обновляем союзников и врагов
+  const updateBotGroup = (bots, targetBots, isEnemyGroup) => {
+    for (const bot of bots) {
+      const ud = bot.mesh.userData;
 
-    if (bot.type === 'tank') {
-      const toTarget = bot.target.clone().sub(bot.mesh.position);
-      toTarget.y = 0;
-      if (toTarget.length() < 20 || now > bot.changeTarget) {
-        bot.target.set((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000);
-        bot.changeTarget = now + 5 + Math.random()*5;
+      if (bot.type === 'tank') {
+        const toTarget = bot.target.clone().sub(bot.mesh.position);
+        toTarget.y = 0;
+        if (toTarget.length() < 20 || now > bot.changeTarget) {
+          bot.target.set((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000);
+          bot.changeTarget = now + 5 + Math.random()*5;
+        } else {
+          const dir = toTarget.normalize();
+          const targetAngle = Math.atan2(dir.x, dir.z);
+          bot.mesh.rotation.y = THREE.MathUtils.lerp(bot.mesh.rotation.y, targetAngle + Math.PI, 0.05);
+          
+          const engineFactor = Math.max(0.2, ud.modules.engine / 100);
+          const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
+          bot.mesh.position.addScaledVector(fwd, 15 * engineFactor * dt);
+          
+          const groundY = getTerrainHeight(bot.mesh.position.x, bot.mesh.position.z);
+          bot.mesh.position.y = THREE.MathUtils.lerp(bot.mesh.position.y, groundY + 1.0, 5 * dt);
+        }
+
+        // Поиск цели
+        let closestTarget = null;
+        let minDist = 300;
+        for (const tb of targetBots) {
+          if (!tb.mesh) continue;
+          const d = bot.mesh.position.distanceTo(tb.mesh.position);
+          if (d < minDist) {
+            minDist = d;
+            closestTarget = tb.mesh;
+          }
+        }
+        // Если союзник, может целиться в игрока (если это враг)
+        if (isEnemyGroup && player) {
+          const d = bot.mesh.position.distanceTo(player.position);
+          if (d < minDist) {
+            minDist = d;
+            closestTarget = player;
+          }
+        }
+
+        if (closestTarget) {
+          const toTarget = closestTarget.position.clone().sub(bot.mesh.position);
+          const angle = Math.atan2(toTarget.x, toTarget.z) - bot.mesh.rotation.y;
+          ud.turret.rotation.y = THREE.MathUtils.lerp(ud.turret.rotation.y, angle, 0.05);
+
+          if (minDist < 250 && now - bot.lastShot > 4.0) {
+            bot.lastShot = now;
+            const muzzle = new THREE.Vector3();
+            ud.muzzle.getWorldPosition(muzzle);
+            const dir = toTarget.normalize();
+            dir.x += (Math.random()-0.5)*0.05;
+            dir.y += (Math.random()-0.5)*0.05;
+            spawnShell(muzzle, dir, 200, 45, isEnemyGroup ? 'enemy' : 'ally');
+          }
+        }
       } else {
-        const dir = toTarget.normalize();
-        const targetAngle = Math.atan2(dir.x, dir.z);
-        bot.mesh.rotation.y = THREE.MathUtils.lerp(bot.mesh.rotation.y, targetAngle + Math.PI, 0.05);
-        
-        const engineFactor = Math.max(0.2, ud.modules.engine / 100);
+        // Самолеты боты просто кружат
+        bot.mesh.rotation.y += 0.1 * dt;
+        bot.mesh.rotation.z = 0.4;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
-        bot.mesh.position.addScaledVector(fwd, 15 * engineFactor * dt);
-        
-        const groundY = getTerrainHeight(bot.mesh.position.x, bot.mesh.position.z);
-        bot.mesh.position.y = THREE.MathUtils.lerp(bot.mesh.position.y, groundY + 1.0, 5 * dt);
-      }
-
-      if (player) {
-        const toPlayer = player.position.clone().sub(bot.mesh.position);
-        const angle = Math.atan2(toPlayer.x, toPlayer.z) - bot.mesh.rotation.y;
-        ud.turret.rotation.y = THREE.MathUtils.lerp(ud.turret.rotation.y, angle, 0.05);
-
-        if (toPlayer.length() < 250 && now - bot.lastShot > 4.0) {
-          bot.lastShot = now;
-          const muzzle = new THREE.Vector3();
-          ud.muzzle.getWorldPosition(muzzle);
-          const dir = toPlayer.normalize();
-          dir.x += (Math.random()-0.5)*0.05;
-          dir.y += (Math.random()-0.5)*0.05;
-          spawnShell(muzzle, dir, 200, 45, 'bot');
+        bot.mesh.position.addScaledVector(fwd, 120 * dt);
+        if (bot.mesh.position.y < 50) bot.mesh.position.y = 50;
+        if (bot.mesh.position.length() > 1500) {
+          bot.mesh.position.set((Math.random()-0.5)*1000, 200, (Math.random()-0.5)*1000);
         }
       }
-    } else {
-      bot.mesh.rotation.y += 0.1 * dt;
-      bot.mesh.rotation.z = 0.4;
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
-      bot.mesh.position.addScaledVector(fwd, 120 * dt);
-      if (bot.mesh.position.y < 50) bot.mesh.position.y = 50;
-      if (bot.mesh.position.length() > 1500) {
-        bot.mesh.position.set((Math.random()-0.5)*1000, 200, (Math.random()-0.5)*1000);
-      }
     }
-  }
+  };
+
+  updateBotGroup(state.allies, state.enemies, false);
+  updateBotGroup(state.enemies, state.allies, true);
 }
 
 function updateShells(dt) {
@@ -1140,7 +1195,7 @@ function updateHUD() {
   else ammoEl.classList.remove('low');
 
   document.getElementById('topinfo').textContent =
-    `Цель: ${state.kills} / ${state.targetKills} фрагов`;
+    `Цель: ${state.kills} / ${state.targetKills} фрагов | Врагов: ${state.enemies.length}`;
 
   mctx.clearRect(0, 0, 200, 200);
   mctx.fillStyle = 'rgba(0,20,0,0.6)';
@@ -1148,6 +1203,7 @@ function updateHUD() {
   const scale = 200 / 2000;
   const cx = 100, cz = 100;
 
+  // Точки
   mctx.fillStyle = 'rgba(0,255,0,0.5)';
   for (const cp of state.capturePoints) {
     mctx.beginPath();
@@ -1155,15 +1211,25 @@ function updateHUD() {
     mctx.fill();
   }
 
+  // Игрок
   mctx.fillStyle = '#fff';
   mctx.beginPath();
   mctx.arc(cx + player.position.x * scale, cz + player.position.z * scale, 4, 0, Math.PI*2);
   mctx.fill();
 
-  mctx.fillStyle = '#f00';
-  for (const b of bots) {
+  // Союзники (синие)
+  mctx.fillStyle = '#00f';
+  for (const a of state.allies) {
     mctx.beginPath();
-    mctx.arc(cx + b.mesh.position.x * scale, cz + b.mesh.position.z * scale, 3, 0, Math.PI*2);
+    mctx.arc(cx + a.mesh.position.x * scale, cz + a.mesh.position.z * scale, 3, 0, Math.PI*2);
+    mctx.fill();
+  }
+
+  // Враги (красные)
+  mctx.fillStyle = '#f00';
+  for (const e of state.enemies) {
+    mctx.beginPath();
+    mctx.arc(cx + e.mesh.position.x * scale, cz + e.mesh.position.z * scale, 3, 0, Math.PI*2);
     mctx.fill();
   }
 }
@@ -1184,10 +1250,16 @@ function updateMarkers() {
     el.style.top = `${y}px`;
   };
 
-  for (const bot of bots) {
-    const pos = bot.mesh.position.clone();
-    pos.y += bot.type === 'tank' ? 5 : 4;
-    updateEl(bot.ui, pos);
+  for (const e of state.enemies) {
+    const pos = e.mesh.position.clone();
+    pos.y += e.type === 'tank' ? 5 : 4;
+    updateEl(e.ui, pos);
+  }
+
+  for (const a of state.allies) {
+    const pos = a.mesh.position.clone();
+    pos.y += a.type === 'tank' ? 5 : 4;
+    updateEl(a.ui, pos);
   }
 
   for (const cp of state.capturePoints) {
@@ -1266,18 +1338,18 @@ function startGame() {
   state.prepTime = 15;
   state.isZMenuOpen = false;
   targetYaw = 0; targetPitch = 0;
+  planeTargetPitch = 0; planeTargetRoll = 0;
   document.getElementById('start-timer').style.display = 'block';
   document.getElementById('start-timer').textContent = '15';
   document.getElementById('menu').style.display = 'none';
   document.getElementById('end-screen').style.display = 'none';
   
-  // Захватываем курсор
   document.body.requestPointerLock();
   document.body.style.cursor = 'none';
 
   loadMap(state.mapIndex);
   spawnPlayer();
-  spawnBots(15);
+  spawnBots();
 }
 
 function endGame(win) {
@@ -1308,8 +1380,10 @@ document.getElementById('resumeBtn').onclick = () => {
 document.getElementById('restartBtn').onclick = () => {
   scene.remove(player);
   player = null;
-  bots.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
-  bots = [];
+  state.allies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
+  state.enemies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
+  state.allies = [];
+  state.enemies = [];
   shells.forEach(s => scene.remove(s.mesh));
   shells.length = 0;
   document.getElementById('menu').style.display = 'flex';
