@@ -9,23 +9,52 @@
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   
-  /* Прицел */
-  #crosshair {
+  /* ПРИЦЕЛ ТАНКА */
+  #tank-crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
     border-radius: 50%; box-shadow: 0 0 10px rgba(0,255,0,0.5);
     display: flex; justify-content: center; align-items: center;
   }
-  #crosshair::before, #crosshair::after {
+  #tank-crosshair::before, #tank-crosshair::after {
     content: ''; position: absolute; background: rgba(0,255,0,0.9);
   }
-  #crosshair::before { width: 2px; height: 10px; top: -15px; }
-  #crosshair::after { width: 2px; height: 10px; bottom: -15px; }
-  
-  /* Оптика */
+  #tank-crosshair::before { width: 2px; height: 10px; top: -15px; }
+  #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
+
+  /* ПРИЦЕЛ САМОЛЕТА */
+  #plane-crosshair {
+    position: absolute; top: 50%; left: 50%; width: 200px; height: 200px;
+    transform: translate(-50%,-50%); display: none; pointer-events: none;
+  }
+  #plane-crosshair::after {
+    content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+    background: #0f0; border-radius: 50%; transform: translate(-50%, -50%);
+    box-shadow: 0 0 5px #0f0;
+  }
+  .plane-line-h {
+    position: absolute; top: 50%; left: 0; width: 100%; height: 2px;
+    background: rgba(0, 255, 0, 0.5); transform: translateY(-50%);
+  }
+  .plane-line-v {
+    position: absolute; top: 0; left: 50%; width: 2px; height: 100%;
+    background: rgba(0, 255, 0, 0.5); transform: translateX(-50%);
+  }
+  .plane-ring {
+    position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
+    border: 2px solid rgba(0, 255, 0, 0.7); border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .plane-ticks {
+    position: absolute; top: 50%; left: 50%; width: 100%;
+    transform: translate(-50%, -50%); display: flex; justify-content: space-between;
+  }
+  .plane-tick { width: 2px; height: 10px; background: rgba(0, 255, 0, 0.7); }
+  .plane-tick.long { height: 20px; }
+
+  /* СНАЙПЕРСКИЙ ПРИЦЕЛ (ТАНК) */
   #sniper-scope {
-    position: absolute; inset: 0; display: none; z-index: 6;
-    pointer-events: none;
+    position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
   }
   #sniper-scope::before {
     content: ''; position: absolute; inset: 0;
@@ -140,7 +169,20 @@
     <span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span>
   </div>
   
-  <div id="crosshair"></div>
+  <div id="tank-crosshair"></div>
+  
+  <div id="plane-crosshair">
+    <div class="plane-line-h"></div>
+    <div class="plane-line-v"></div>
+    <div class="plane-ring"></div>
+    <div class="plane-ticks">
+      <div class="plane-tick"></div>
+      <div class="plane-tick"></div>
+      <div class="plane-tick long"></div>
+      <div class="plane-tick"></div>
+      <div class="plane-tick"></div>
+    </div>
+  </div>
   
   <div id="sniper-scope">
     <div class="scope-grid">
@@ -193,8 +235,8 @@
     <button class="btn" id="startBtn">В бой!</button>
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
-    Танк: WASD — движение, Мышь — башня, ЛКМ — огонь, Shift — оптика<br>
-    Самолёт: Мышь — направление, W/S — скорость, ЛКМ — огонь
+    Танк: WASD — движение, Мышь — башня, Колесико — зум, Shift — оптика<br>
+    Самолёт: Мышь — прицел, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум
   </p>
 </div>
 
@@ -229,8 +271,11 @@ const state = {
   capturePoints: [],
   isSniperMode: false,
   isZMenuOpen: false,
+  isZoomed: false, 
+  cameraZoom: 1.0, // Для колесика танка
   allies: [],
   enemies: [],
+  isFreeLook: false, // Режим C (свободный обзор)
 };
 
 // ============================================================
@@ -525,8 +570,8 @@ function makeTank(nation) {
   g.userData.lastShot = 0;
   g.userData.reloadTime = 2.5;
   g.userData.maxSpeed = 20;
-  g.userData.maxAmmo = 30;
-  g.userData.ammo = 30;
+  g.userData.maxAmmo = 60;
+  g.userData.ammo = 60;
   return g;
 }
 
@@ -621,21 +666,27 @@ function spawnPlayer() {
   const y = state.type === 'plane' ? 200 : getTerrainHeight(0, 0) + 1.2;
   player.position.set(0, y, 0);
   scene.add(player);
+
+  if (state.type === 'tank') {
+    document.getElementById('tank-crosshair').style.display = 'flex';
+    document.getElementById('plane-crosshair').style.display = 'none';
+  } else {
+    document.getElementById('tank-crosshair').style.display = 'none';
+    document.getElementById('plane-crosshair').style.display = 'block';
+  }
 }
 
 function spawnBots() {
-  // Очистка старых ботов
   state.allies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
   state.enemies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
   state.allies = [];
   state.enemies = [];
   
-  // Спавн союзников (синие)
+  // Союзники
   for (let i = 0; i < 4; i++) {
     const type = Math.random() < 0.3 ? 'plane' : 'tank';
     const mesh = makeVehicle(state.nation, type);
     
-    // Спавн рядом с игроком
     const x = (Math.random() - 0.5) * 50;
     const z = (Math.random() - 0.5) * 50;
     const y = type === 'plane' ? 200 : getTerrainHeight(x, z) + 1.2;
@@ -657,7 +708,7 @@ function spawnBots() {
     });
   }
 
-  // Спавн врагов (красные)
+  // Враги
   for (let i = 0; i < 10; i++) {
     const nation = state.nation === 'ussr' ? 'germany' : 'ussr';
     const type = Math.random() < 0.4 ? 'plane' : 'tank';
@@ -692,7 +743,7 @@ function spawnBots() {
 }
 
 // ============================================================
-// СНАРЯДЫ И ЧАСТИЦЫ
+// СНАРЯДЫ
 // ============================================================
 function spawnShell(origin, direction, speed, damage, owner) {
   const isAP = damage > 30;
@@ -725,7 +776,7 @@ function spawnParticle(pos, color, size, life) {
 }
 
 // ============================================================
-// БРОНЯ И ПОПАДАНИЯ
+// БРОНЯ
 // ============================================================
 function getArmorAtPoint(vehicle, worldPoint) {
   const local = vehicle.worldToLocal(worldPoint.clone());
@@ -744,7 +795,6 @@ function getArmorAtPoint(vehicle, worldPoint) {
 }
 
 function handleHit(shell) {
-  // Игрок попал
   if (shell.owner === 'player') {
     for (const enemy of state.enemies) {
       const box = new THREE.Box3().setFromObject(enemy.mesh);
@@ -791,7 +841,6 @@ function handleHit(shell) {
       }
     }
   }
-  // Враг попал в союзника или игрока
   else if (shell.owner === 'enemy') {
     const targets = [player, ...state.allies.map(a => a.mesh)];
     for (const target of targets) {
@@ -843,7 +892,6 @@ addEventListener('keydown', e => {
   if (e.code === 'ShiftLeft' && player && player.userData.type === 'tank' && !state.isPreparePhase) {
     state.isSniperMode = !state.isSniperMode;
     document.getElementById('sniper-scope').style.display = state.isSniperMode ? 'block' : 'none';
-    document.getElementById('crosshair').style.display = state.isSniperMode ? 'none' : 'flex';
   }
 
   if (e.code === 'KeyZ' && state.running && !state.isPreparePhase) {
@@ -862,8 +910,16 @@ addEventListener('keydown', e => {
   if (e.code === 'Space' && player && player.userData.type === 'plane' && !state.isPreparePhase) {
     tryFire();
   }
+
+  // C - Свободный обзор для самолета
+  if (e.code === 'KeyC' && player && player.userData.type === 'plane') {
+    state.isFreeLook = true;
+  }
 });
-addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('keyup', e => { 
+  keys[e.code] = false; 
+  if (e.code === 'KeyC') state.isFreeLook = false;
+});
 
 document.body.addEventListener('click', () => {
   if (state.running && !state.isZMenuOpen && !state.isPreparePhase) {
@@ -871,13 +927,12 @@ document.body.addEventListener('click', () => {
   }
 });
 
-// Данные для танка
+// Переменные прицеливания
 let targetYaw = 0;
 let targetPitch = 0;
-
-// Данные для самолета
-let planeTargetPitch = 0;
-let planeTargetRoll = 0;
+let planeTargetPitch = 0; // Для мыши в самолете (тангаж)
+let planeTargetYaw = 0;   // Для мыши в самолете (рыскание)
+let planeThrottle = 0.5;  // Тяга (0.0 - 1.0)
 
 addEventListener('mousemove', e => {
   if (document.pointerLockElement === document.body && state.running && !state.isPreparePhase) {
@@ -886,22 +941,52 @@ addEventListener('mousemove', e => {
       targetPitch -= e.movementY * 0.002;
       targetPitch = THREE.MathUtils.clamp(targetPitch, -0.15, 0.15);
     } else {
-      // Управление самолетом как в WT (мышь двигает самолет)
+      // В самолете мышь управляет виртуальным инструктором (тянет нос)
       planeTargetPitch -= e.movementY * 0.003;
-      planeTargetRoll -= e.movementX * 0.003;
+      planeTargetYaw -= e.movementX * 0.003;
       
-      // Ограничиваем углы
-      planeTargetPitch = THREE.MathUtils.clamp(planeTargetPitch, -Math.PI/3, Math.PI/3);
-      planeTargetRoll = THREE.MathUtils.clamp(planeTargetRoll, -Math.PI/2, Math.PI/2);
+      // Ограничиваем, чтобы самолет не перевернулся резко
+      planeTargetPitch = THREE.MathUtils.clamp(planeTargetPitch, -1.0, 1.0);
+      planeTargetYaw = THREE.MathUtils.clamp(planeTargetYaw, -1.0, 1.0);
+    }
+  }
+});
+
+// Колесико мыши
+addEventListener('wheel', e => {
+  if (state.running && player && !state.isPreparePhase && !state.isZMenuOpen) {
+    if (player.userData.type === 'tank') {
+      state.cameraZoom += e.deltaY * 0.001;
+      state.cameraZoom = THREE.MathUtils.clamp(state.cameraZoom, 0.2, 3.0);
+    } else {
+      // Управление тягой самолета (газ)
+      planeThrottle -= e.deltaY * 0.001;
+      planeThrottle = THREE.MathUtils.clamp(planeThrottle, 0.0, 1.0);
+    }
+  }
+}, { passive: true });
+
+addEventListener('mousedown', e => {
+  if (!state.running || !player || state.isPreparePhase || state.isZMenuOpen) return;
+  
+  if (e.button === 0) tryFire();
+  
+  if (e.button === 2) {
+    if (player.userData.type === 'plane') {
+      state.isZoomed = true; 
+    }
+  }
+});
+
+addEventListener('mouseup', e => {
+  if (e.button === 2) {
+    if (player && player.userData.type === 'plane') {
+      state.isZoomed = false;
     }
   }
 });
 
 addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('mousedown', e => {
-  if (!state.running || !player || state.isPreparePhase || state.isZMenuOpen) return;
-  if (e.button === 0) tryFire();
-});
 
 const clock = new THREE.Clock();
 
@@ -957,41 +1042,62 @@ function updateTank(dt) {
   const turret = ud.turret;
   const tFactor = Math.max(0.1, ud.modules.turret / 100);
   
-  // Башня следует за мышью (без привязки к повороту корпуса, так как мышь уже задает абсолютный угол)
   turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetYaw - player.rotation.y, 10 * dt * tFactor);
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА (WAR THUNDER STYLE) ===
+// === ЛОГИКА САМОЛЕТА (WAR THUNDER MOUSE AIM) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  // Плавное стремление к целевым углам (мышь)
-  player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, planeTargetPitch, 2.0 * dt);
-  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, planeTargetRoll, 2.0 * dt);
-  
-  // Автовыравнивание если мышь в центре
-  if (Math.abs(planeTargetRoll) < 0.05) {
-    planeTargetRoll = THREE.MathUtils.lerp(planeTargetRoll, 0, 2.0 * dt);
-  }
-  if (Math.abs(planeTargetPitch) < 0.05) {
-    planeTargetPitch = THREE.MathUtils.lerp(planeTargetPitch, 0, 2.0 * dt);
-  }
+  // 1. Тяга (W/S и колесико)
+  if (keys['KeyW']) planeThrottle += 0.5 * dt;
+  if (keys['KeyS']) planeThrottle -= 0.5 * dt;
+  planeThrottle = THREE.MathUtils.clamp(planeThrottle, 0.0, 1.0);
 
-  // Тяга
-  let throttle = 0;
-  if (keys['KeyW']) throttle = 1;
-  if (keys['KeyS']) throttle = -1;
-  
   const engineFactor = Math.max(0.1, ud.modules.engine / 100);
-  ud.speed += (throttle * 50 - 3) * dt;
-  ud.speed = THREE.MathUtils.clamp(ud.speed, 70, ud.maxSpeed * engineFactor);
+  const targetSpeed = 50 + (ud.maxSpeed - 50) * planeThrottle * engineFactor;
+  ud.speed = THREE.MathUtils.lerp(ud.speed, targetSpeed, 0.5 * dt);
 
+  // 2. Управление (Мышь - инструктор, A/D - крен, Q/E - рыскание)
+  let rollInput = 0;
+  if (keys['KeyA']) rollInput = 1;
+  if (keys['KeyD']) rollInput = -1;
+
+  let yawInput = 0;
+  if (keys['KeyQ']) yawInput = 1;
+  if (keys['KeyE']) yawInput = -1;
+
+  // Плавно применяем крен от клавиш
+  const targetRoll = rollInput * 0.8;
+  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, targetRoll, 3.0 * dt);
+
+  // Виртуальный инструктор: мышь тянет нос
+  // Если игрок жмет C (свободный обзор), инструктор не работает
+  if (!state.isFreeLook) {
+    // Тангаж (от мыши)
+    const targetPitch = planeTargetPitch * 0.5;
+    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 2.0 * dt);
+
+    // Рыскание (от мыши + Q/E)
+    const targetYaw = planeTargetYaw * 0.5 + yawInput * 0.5;
+    player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, targetYaw, 2.0 * dt);
+  } else {
+    // В свободном обзоре самолет летит прямо
+    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 2.0 * dt);
+    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
+    player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, player.rotation.y, 1.0 * dt);
+  }
+
+  // Возврат мыши в центр для следующего кадра (чтобы инструктор не держал самолет вечно)
+  planeTargetPitch *= 0.9;
+  planeTargetYaw *= 0.9;
+
+  // 3. Движение
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  if (ud.speed < 90) player.position.y -= (90 - ud.speed) * 0.3 * dt;
-
+  // 4. Столкновение с землей
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
@@ -1000,13 +1106,11 @@ function updatePlane(dt) {
   }
 }
 
-// === ЛОГИКА БОТОВ ===
 function updateBots(dt) {
   if (state.isPreparePhase) return;
 
   const now = performance.now() / 1000;
   
-  // Обновляем союзников и врагов
   const updateBotGroup = (bots, targetBots, isEnemyGroup) => {
     for (const bot of bots) {
       const ud = bot.mesh.userData;
@@ -1030,7 +1134,6 @@ function updateBots(dt) {
           bot.mesh.position.y = THREE.MathUtils.lerp(bot.mesh.position.y, groundY + 1.0, 5 * dt);
         }
 
-        // Поиск цели
         let closestTarget = null;
         let minDist = 300;
         for (const tb of targetBots) {
@@ -1041,7 +1144,6 @@ function updateBots(dt) {
             closestTarget = tb.mesh;
           }
         }
-        // Если союзник, может целиться в игрока (если это враг)
         if (isEnemyGroup && player) {
           const d = bot.mesh.position.distanceTo(player.position);
           if (d < minDist) {
@@ -1066,7 +1168,6 @@ function updateBots(dt) {
           }
         }
       } else {
-        // Самолеты боты просто кружат
         bot.mesh.rotation.y += 0.1 * dt;
         bot.mesh.rotation.z = 0.4;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
@@ -1134,7 +1235,9 @@ function updateCamera(dt) {
     player.userData.turret.getWorldQuaternion(quat);
     dir.applyQuaternion(quat).normalize();
 
-    const zoomMult = state.isSniperMode ? 0.3 : 1.0;
+    let zoomMult = state.cameraZoom;
+    if (state.isSniperMode) zoomMult *= 0.3;
+
     const camDist = 18 * zoomMult;
     const camHeight = 5 * zoomMult;
     
@@ -1149,20 +1252,32 @@ function updateCamera(dt) {
   } else {
     const back = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+    
+    const zoomMult = state.isZoomed ? 0.4 : 1.0;
+    
     const targetPos = player.position.clone()
-      .addScaledVector(back, 25)
-      .addScaledVector(up, 8);
+      .addScaledVector(back, 25 * zoomMult)
+      .addScaledVector(up, 8 * zoomMult);
     camera.position.lerp(targetPos, 5 * dt);
     
-    const lookAt = player.position.clone()
-      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
-    camera.lookAt(lookAt);
-    camera.up.copy(up);
+    if (state.isFreeLook) {
+      // Свободный обзор (камера просто смотрит вперед)
+      const lookAt = player.position.clone()
+        .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
+      camera.lookAt(lookAt);
+      camera.up.copy(up);
+    } else {
+      // Обычный обзор
+      const lookAt = player.position.clone()
+        .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
+      camera.lookAt(lookAt);
+      camera.up.copy(up);
+    }
   }
 }
 
 // ============================================================
-// HUD / МИНИ-КАРТА
+// HUD
 // ============================================================
 const minimap = document.getElementById('minimap');
 const mctx = minimap.getContext('2d');
@@ -1175,7 +1290,7 @@ function updateHUD() {
     ${state.nation === 'ussr' ? 'СССР' : 'Германия'} · ${ud.type === 'tank' ? 'Танк' : 'Самолёт'}<br>
     HP: ${Math.max(0, Math.round(ud.health))} | Счёт: ${state.score}<br>
     Двигатель: ${Math.max(0, Math.round(ud.modules.engine))}%<br>
-    ${ud.type === 'tank' ? `Башня: ${Math.max(0, Math.round(ud.modules.turret))}%` : `Крыло: ${Math.max(0, Math.round(ud.modules.wing))}%`}
+    ${ud.type === 'tank' ? `Башня: ${Math.max(0, Math.round(ud.modules.turret))}%` : `Тяга: ${Math.round(planeThrottle*100)}%`}
   `;
 
   const now = performance.now() / 1000;
@@ -1203,7 +1318,6 @@ function updateHUD() {
   const scale = 200 / 2000;
   const cx = 100, cz = 100;
 
-  // Точки
   mctx.fillStyle = 'rgba(0,255,0,0.5)';
   for (const cp of state.capturePoints) {
     mctx.beginPath();
@@ -1211,13 +1325,11 @@ function updateHUD() {
     mctx.fill();
   }
 
-  // Игрок
   mctx.fillStyle = '#fff';
   mctx.beginPath();
   mctx.arc(cx + player.position.x * scale, cz + player.position.z * scale, 4, 0, Math.PI*2);
   mctx.fill();
 
-  // Союзники (синие)
   mctx.fillStyle = '#00f';
   for (const a of state.allies) {
     mctx.beginPath();
@@ -1225,7 +1337,6 @@ function updateHUD() {
     mctx.fill();
   }
 
-  // Враги (красные)
   mctx.fillStyle = '#f00';
   for (const e of state.enemies) {
     mctx.beginPath();
@@ -1297,7 +1408,7 @@ function animate() {
     updateMarkers();
 
     if (player.userData.type === 'plane' && player.userData.prop) {
-      player.userData.prop.rotation.z += 50 * dt;
+      player.userData.prop.rotation.z += (50 + planeThrottle * 100) * dt;
     }
   }
 
@@ -1337,8 +1448,10 @@ function startGame() {
   state.isPreparePhase = true;
   state.prepTime = 15;
   state.isZMenuOpen = false;
+  state.cameraZoom = 1.0;
+  planeThrottle = 0.5; // Сброс тяги
   targetYaw = 0; targetPitch = 0;
-  planeTargetPitch = 0; planeTargetRoll = 0;
+  planeTargetPitch = 0; planeTargetYaw = 0;
   document.getElementById('start-timer').style.display = 'block';
   document.getElementById('start-timer').textContent = '15';
   document.getElementById('menu').style.display = 'none';
