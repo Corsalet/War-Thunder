@@ -5,21 +5,59 @@
 <title>Steel Front — WT-like Prototype</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; color: #0f0; user-select: none; }
+  /* Скрываем системный курсор для погружения */
+  body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; color: #0f0; user-select: none; cursor: none; }
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   
+  /* Обычный прицел (мушка) */
   #crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
     border-radius: 50%; box-shadow: 0 0 10px rgba(0,255,0,0.5);
+    display: flex; justify-content: center; align-items: center;
   }
   #crosshair::before, #crosshair::after {
     content: ''; position: absolute; background: rgba(0,255,0,0.9);
   }
-  #crosshair::before { width: 2px; height: 10px; left: 50%; top: -15px; transform: translateX(-50%); }
-  #crosshair::after { width: 2px; height: 10px; left: 50%; bottom: -15px; transform: translateX(-50%); }
+  #crosshair::before { width: 2px; height: 10px; top: -15px; }
+  #crosshair::after { width: 2px; height: 10px; bottom: -15px; }
   
+  /* Снайперский прицел (оптика) */
+  #sniper-scope {
+    position: absolute; inset: 0; display: none; z-index: 6;
+    pointer-events: none;
+  }
+  #sniper-scope::before {
+    content: ''; position: absolute; inset: 0;
+    box-shadow: inset 0 0 150px 100px rgba(0,0,0,0.95);
+    background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 70%);
+  }
+  /* Сетка прицела */
+  .scope-grid {
+    position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
+    transform: translate(-50%, -50%);
+  }
+  .scope-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(0,0,0,0.8); }
+  .scope-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(0,0,0,0.8); }
+  .scope-center {
+    position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+    transform: translate(-50%, -50%); border: 1px solid rgba(0,0,0,0.9); border-radius: 50%;
+    display: flex; justify-content: center; align-items: center;
+  }
+  .scope-center::after { content: ''; width: 4px; height: 4px; background: #000; border-radius: 50%; }
+  
+  /* Шкала дальномера */
+  .scope-scale {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, 20px);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .scope-scale div { width: 2px; height: 6px; background: #000; position: relative; }
+  .scope-scale div.long { height: 10px; width: 2px; }
+  .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
+
+  /* Общий интерфейс (HUD) */
   #hud-bottom {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -45,13 +83,14 @@
     font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000;
     padding-bottom: 5px;
   }
-  #menu {
+  #menu, #z-menu {
     position: absolute; inset: 0; background: rgba(0,0,0,0.9);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     pointer-events: all; z-index: 10; color: #0f0; gap: 16px;
+    cursor: default; /* Возвращаем курсор в меню */
   }
-  #menu h1 { font-size: 48px; letter-spacing: 8px; text-shadow: 0 0 20px #0f0; }
-  #menu p { opacity: 0.7; margin-bottom: 20px; }
+  #z-menu { display: none; background: rgba(0,0,0,0.7); z-index: 15; cursor: default; }
+  #z-menu h2 { font-size: 32px; margin-bottom: 20px; }
   .btn {
     pointer-events: all; cursor: pointer; background: transparent;
     border: 2px solid #0f0; color: #0f0; padding: 12px 40px;
@@ -81,7 +120,7 @@
   #end-screen {
     position: absolute; inset: 0; background: rgba(0,0,0,0.8);
     display: none; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 20; color: #0f0; gap: 20px;
+    pointer-events: all; z-index: 20; color: #0f0; gap: 20px; cursor: default;
   }
   #end-screen h2 { font-size: 64px; text-shadow: 0 0 20px #0f0; }
   #end-screen.defeat h2 { color: #f00; text-shadow: 0 0 20px #f00; }
@@ -106,7 +145,28 @@
   <div id="compass">
     <span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span>
   </div>
+  
   <div id="crosshair"></div>
+  
+  <!-- Снайперский прицел -->
+  <div id="sniper-scope">
+    <div class="scope-grid">
+      <div class="scope-line-h"></div>
+      <div class="scope-line-v"></div>
+      <div class="scope-center"></div>
+      <div class="scope-scale">
+        <div class="long"><span>4</span></div>
+        <div><span>8</span></div>
+        <div><span>12</span></div>
+        <div><span>16</span></div>
+        <div class="long"><span>20</span></div>
+        <div><span>24</span></div>
+        <div><span>28</span></div>
+        <div><span>32</span></div>
+      </div>
+    </div>
+  </div>
+
   <div id="topinfo"></div>
   <div id="markers-container"></div>
   <canvas id="minimap" width="200" height="200"></canvas>
@@ -140,9 +200,15 @@
     <button class="btn" id="startBtn">В бой!</button>
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
-    Танк: WASD — движение, Мышь — прицел, ЛКМ — огонь<br>
-    Самолёт: WASD — пилотаж (W/S нос, A/D крен), Q/E — рыскание, Пробел — огонь
+    Танк: WASD — движение, Мышь — башня, ЛКМ — огонь, Shift — оптика, Z — курсор<br>
+    Самолёт: WASD — пилотаж, Пробел — огонь
   </p>
+</div>
+
+<div id="z-menu">
+  <h2>СВОБОДНЫЙ КУРСОР</h2>
+  <p style="margin-bottom: 20px;">Нажмите Z, чтобы вернуться в бой</p>
+  <button class="btn" id="resumeBtn">Продолжить</button>
 </div>
 
 <div id="end-screen">
@@ -168,6 +234,8 @@ const state = {
   kills: 0,
   targetKills: 10,
   capturePoints: [],
+  isSniperMode: false,
+  isZMenuOpen: false,
 };
 
 // ============================================================
@@ -369,7 +437,7 @@ function loadMap(idx) {
 }
 
 // ============================================================
-// МОДЕЛИ
+// МОДЕЛИ (СТВОЛ СМОТРИТ В -Z)
 // ============================================================
 function makeTank(nation) {
   const g = new THREE.Group();
@@ -447,6 +515,7 @@ function makeTank(nation) {
   muzzleBrake.position.set(0, 0, -1.5 - barrelLen);
   turret.add(muzzleBrake);
 
+  // Точка вылета строго на конце ствола
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0, -1.7 - barrelLen);
   turret.add(muzzle);
@@ -539,12 +608,9 @@ function makePlane(nation) {
   g.userData.maxSpeed = 200;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
-  
-  // Углы для управления WASD
   g.userData.pitchRate = 0;
   g.userData.rollRate = 0;
   g.userData.yawRate = 0;
-  
   return g;
 }
 
@@ -657,7 +723,6 @@ function getArmorAtPoint(vehicle, worldPoint) {
 }
 
 function handleHit(shell) {
-  // Проверка попадания в ботов (если стреляет игрок)
   if (shell.owner === 'player') {
     for (const bot of bots) {
       const box = new THREE.Box3().setFromObject(bot.mesh);
@@ -704,7 +769,6 @@ function handleHit(shell) {
       }
     }
   } 
-  // Проверка попадания в игрока (если стреляют боты)
   else if (shell.owner === 'bot' && player) {
     const box = new THREE.Box3().setFromObject(player);
     if (box.containsPoint(shell.mesh.position)) {
@@ -748,34 +812,45 @@ function handleHit(shell) {
 const keys = {};
 addEventListener('keydown', e => { 
   keys[e.code] = true; 
+  
+  if (e.code === 'ShiftLeft' && player && player.userData.type === 'tank' && !state.isPreparePhase) {
+    state.isSniperMode = !state.isSniperMode;
+    document.getElementById('sniper-scope').style.display = state.isSniperMode ? 'block' : 'none';
+    document.getElementById('crosshair').style.display = state.isSniperMode ? 'none' : 'flex';
+  }
+
+  if (e.code === 'KeyZ' && state.running && !state.isPreparePhase) {
+    state.isZMenuOpen = !state.isZMenuOpen;
+    document.getElementById('z-menu').style.display = state.isZMenuOpen ? 'flex' : 'none';
+    document.body.style.cursor = state.isZMenuOpen ? 'default' : 'none';
+  }
+
   if (e.code === 'Space' && player && player.userData.type === 'plane' && !state.isPreparePhase) {
     tryFire();
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
-let targetMouseX = 0, targetMouseY = 0;
-let currentMouseX = 0, currentMouseY = 0;
-let cameraZoom = 1.0;
+// КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Мышь управляет башней ОТНОСИТЕЛЬНО ЦЕНТРА ЭКРАНА
+let targetYaw = 0;
+let targetPitch = 0;
 
 addEventListener('mousemove', e => {
-  if (player && player.userData.type === 'tank') {
-    // Мышь напрямую управляет прицелом
-    targetMouseX = (e.clientX / innerWidth) * 2 - 1;
-    targetMouseY = (e.clientY / innerHeight) * 2 - 1;
+  if (!state.running || !player || state.isZMenuOpen || state.isPreparePhase) return;
+  
+  if (player.userData.type === 'tank') {
+    // Движение мыши смещает прицел
+    targetYaw -= e.movementX * 0.002;
+    targetPitch -= e.movementY * 0.002;
+    
+    // Ограничиваем по вертикали
+    targetPitch = THREE.MathUtils.clamp(targetPitch, -0.15, 0.15);
   }
 });
 
-addEventListener('wheel', e => {
-  if (state.running && player && player.userData.type === 'tank') {
-    cameraZoom += e.deltaY * 0.001;
-    cameraZoom = THREE.MathUtils.clamp(cameraZoom, 0.2, 3.0);
-  }
-}, { passive: true });
-
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousedown', e => {
-  if (!state.running || !player || state.isPreparePhase) return;
+  if (!state.running || !player || state.isPreparePhase || state.isZMenuOpen) return;
   if (e.button === 0) tryFire();
 });
 
@@ -796,6 +871,7 @@ function tryFire() {
   const muzzleWorld = new THREE.Vector3();
   player.userData.muzzle.getWorldPosition(muzzleWorld);
   
+  // Снаряд летит туда, куда смотрит ствол (-Z)
   const dir = new THREE.Vector3(0, 0, -1);
   const quat = new THREE.Quaternion();
   if (player.userData.type === 'tank') {
@@ -830,36 +906,28 @@ function updateTank(dt) {
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   player.position.y = THREE.MathUtils.lerp(player.position.y, groundY + 1.0, 10 * dt);
 
-  // Плавное движение прицела
-  currentMouseX = THREE.MathUtils.lerp(currentMouseX, targetMouseX, 15 * dt);
-  currentMouseY = THREE.MathUtils.lerp(currentMouseY, targetMouseY, 15 * dt);
-
+  // Плавное вращение башни
   const turret = ud.turret;
   const tFactor = Math.max(0.1, ud.modules.turret / 100);
   
-  const localYaw = -currentMouseX * Math.PI - player.rotation.y;
-  
-  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, localYaw, 10 * dt * tFactor);
-  turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, currentMouseY * 0.15, 10 * dt);
+  // Привязка башни к движению мыши
+  turret.rotation.y = THREE.MathUtils.lerp(turret.rotation.y, targetYaw, 10 * dt * tFactor);
+  turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА (WASD) ===
+// === ЛОГИКА САМОЛЕТА ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  // Управление WASD
-  let pitchInput = 0;
-  let rollInput = 0;
-  let yawInput = 0;
+  let pitchInput = 0, rollInput = 0, yawInput = 0;
 
-  if (keys['KeyW']) pitchInput = 1;   // Нос вверх
-  if (keys['KeyS']) pitchInput = -1;  // Нос вниз
-  if (keys['KeyA']) rollInput = 1;    // Крен влево
-  if (keys['KeyD']) rollInput = -1;   // Крен вправо
-  if (keys['KeyQ']) yawInput = 1;     // Рыскание влево
-  if (keys['KeyE']) yawInput = -1;    // Рыскание вправо
+  if (keys['KeyW']) pitchInput = 1;
+  if (keys['KeyS']) pitchInput = -1;
+  if (keys['KeyA']) rollInput = 1;
+  if (keys['KeyD']) rollInput = -1;
+  if (keys['KeyQ']) yawInput = 1;
+  if (keys['KeyE']) yawInput = -1;
 
-  // Сглаживание угловых скоростей
   ud.pitchRate = THREE.MathUtils.lerp(ud.pitchRate, pitchInput * 1.5, 5 * dt);
   ud.rollRate = THREE.MathUtils.lerp(ud.rollRate, rollInput * 2.5, 5 * dt);
   ud.yawRate = THREE.MathUtils.lerp(ud.yawRate, yawInput * 0.8, 5 * dt);
@@ -868,15 +936,12 @@ function updatePlane(dt) {
   player.rotation.z += ud.rollRate * dt;
   player.rotation.y += ud.yawRate * dt;
 
-  // Ограничения, чтобы не улететь в штопор
   player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
 
-  // Автовыравнивание крена, если нет ввода
   if (rollInput === 0) {
     player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 1.0 * dt);
   }
 
-  // Тяга
   let throttle = 0;
   if (keys['ShiftLeft']) throttle = 1;
   if (keys['ControlLeft']) throttle = -1;
@@ -888,7 +953,6 @@ function updatePlane(dt) {
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  // Гравитация
   if (ud.speed < 100) player.position.y -= (100 - ud.speed) * 0.5 * dt;
 
   const groundY = getTerrainHeight(player.position.x, player.position.z);
@@ -936,7 +1000,7 @@ function updateBots(dt) {
           const dir = toPlayer.normalize();
           dir.x += (Math.random()-0.5)*0.05;
           dir.y += (Math.random()-0.5)*0.05;
-          spawnShell(muzzle, dir, 200, 45, 'bot'); // Теперь 'bot' наносит урон игроку
+          spawnShell(muzzle, dir, 200, 45, 'bot');
         }
       }
     } else {
@@ -988,33 +1052,35 @@ function updateParticles(dt) {
 }
 
 // ============================================================
-// КАМЕРА
+// КАМЕРА (ГЛАВНОЕ ИСПРАВЛЕНИЕ)
 // ============================================================
 function updateCamera(dt) {
   if (!player) return;
   const isTank = player.userData.type === 'tank';
 
   if (isTank) {
-    // Берем позицию и направление ствола
     const muzzleWorld = new THREE.Vector3();
     player.userData.muzzle.getWorldPosition(muzzleWorld);
     
+    // Вектор направления ствола
     const dir = new THREE.Vector3(0, 0, -1);
     const quat = new THREE.Quaternion();
     player.userData.turret.getWorldQuaternion(quat);
     dir.applyQuaternion(quat).normalize();
 
-    // Отдаляем камеру строго назад по оси ствола
-    const camDist = 15 * cameraZoom;
-    const camHeight = 4 * cameraZoom;
+    // Настройки зума для оптики и обычного вида
+    const zoomMult = state.isSniperMode ? 0.3 : 1.0;
+    const camDist = 18 * zoomMult;
+    const camHeight = 5 * zoomMult;
     
+    // Ставим камеру строго сзади ствола
     const camPos = muzzleWorld.clone()
       .addScaledVector(dir, -camDist)
       .add(new THREE.Vector3(0, camHeight, 0));
     
     camera.position.lerp(camPos, 15 * dt);
     
-    // Смотрим строго по стволу
+    // Смотрим строго по стволу на 100 метров
     const lookAtPos = muzzleWorld.clone().addScaledVector(dir, 100);
     camera.lookAt(lookAtPos);
   } else {
@@ -1138,7 +1204,7 @@ function animate() {
       }
     }
 
-    if (!state.isPreparePhase) {
+    if (!state.isPreparePhase && !state.isZMenuOpen) {
       if (player.userData.type === 'tank') updateTank(dt);
       else updatePlane(dt);
       updateBots(dt);
@@ -1190,13 +1256,13 @@ function startGame() {
   state.kills = 0;
   state.isPreparePhase = true;
   state.prepTime = 15;
-  cameraZoom = 1.0;
-  targetMouseX = 0; targetMouseY = 0;
-  currentMouseX = 0; currentMouseY = 0;
+  state.isZMenuOpen = false;
+  targetYaw = 0; targetPitch = 0;
   document.getElementById('start-timer').style.display = 'block';
   document.getElementById('start-timer').textContent = '15';
   document.getElementById('menu').style.display = 'none';
   document.getElementById('end-screen').style.display = 'none';
+  document.body.style.cursor = 'none';
 
   loadMap(state.mapIndex);
   spawnPlayer();
@@ -1206,6 +1272,7 @@ function startGame() {
 function endGame(win) {
   state.running = false;
   document.exitPointerLock();
+  document.body.style.cursor = 'default';
   const end = document.getElementById('end-screen');
   end.style.display = 'flex';
   
@@ -1221,6 +1288,11 @@ function endGame(win) {
 }
 
 document.getElementById('startBtn').onclick = () => startGame();
+document.getElementById('resumeBtn').onclick = () => {
+  state.isZMenuOpen = false;
+  document.getElementById('z-menu').style.display = 'none';
+  document.body.style.cursor = 'none';
+};
 document.getElementById('restartBtn').onclick = () => {
   scene.remove(player);
   player = null;
