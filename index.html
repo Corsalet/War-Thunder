@@ -9,7 +9,6 @@
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   
-  /* ПРИЦЕЛ ТАНКА */
   #tank-crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
@@ -22,7 +21,6 @@
   #tank-crosshair::before { width: 2px; height: 10px; top: -15px; }
   #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
 
-  /* ПРИЦЕЛ САМОЛЕТА */
   #plane-crosshair {
     position: absolute; top: 50%; left: 50%; width: 200px; height: 200px;
     transform: translate(-50%,-50%); display: none; pointer-events: none;
@@ -52,7 +50,6 @@
   .plane-tick { width: 2px; height: 10px; background: rgba(0, 255, 0, 0.7); }
   .plane-tick.long { height: 20px; }
 
-  /* СНАЙПЕРСКИЙ ПРИЦЕЛ (ТАНК) */
   #sniper-scope {
     position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
   }
@@ -82,7 +79,6 @@
   .scope-scale div.long { height: 10px; width: 2px; }
   .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
 
-  /* HUD */
   #hud-bottom {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -272,10 +268,10 @@ const state = {
   isSniperMode: false,
   isZMenuOpen: false,
   isZoomed: false, 
-  cameraZoom: 1.0, // Для колесика танка
+  cameraZoom: 1.0, 
   allies: [],
   enemies: [],
-  isFreeLook: false, // Режим C (свободный обзор)
+  isFreeLook: false, 
 };
 
 // ============================================================
@@ -292,7 +288,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Свет
 const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x4a3a20, 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 2.0);
@@ -682,7 +677,6 @@ function spawnBots() {
   state.allies = [];
   state.enemies = [];
   
-  // Союзники
   for (let i = 0; i < 4; i++) {
     const type = Math.random() < 0.3 ? 'plane' : 'tank';
     const mesh = makeVehicle(state.nation, type);
@@ -708,7 +702,6 @@ function spawnBots() {
     });
   }
 
-  // Враги
   for (let i = 0; i < 10; i++) {
     const nation = state.nation === 'ussr' ? 'germany' : 'ussr';
     const type = Math.random() < 0.4 ? 'plane' : 'tank';
@@ -911,7 +904,6 @@ addEventListener('keydown', e => {
     tryFire();
   }
 
-  // C - Свободный обзор для самолета
   if (e.code === 'KeyC' && player && player.userData.type === 'plane') {
     state.isFreeLook = true;
   }
@@ -927,12 +919,11 @@ document.body.addEventListener('click', () => {
   }
 });
 
-// Переменные прицеливания
 let targetYaw = 0;
 let targetPitch = 0;
-let planeTargetPitch = 0; // Для мыши в самолете (тангаж)
-let planeTargetYaw = 0;   // Для мыши в самолете (рыскание)
-let planeThrottle = 0.5;  // Тяга (0.0 - 1.0)
+let planeTargetPitch = 0; 
+let planeTargetYaw = 0;   
+let planeThrottle = 0.5;  
 
 addEventListener('mousemove', e => {
   if (document.pointerLockElement === document.body && state.running && !state.isPreparePhase) {
@@ -941,25 +932,22 @@ addEventListener('mousemove', e => {
       targetPitch -= e.movementY * 0.002;
       targetPitch = THREE.MathUtils.clamp(targetPitch, -0.15, 0.15);
     } else {
-      // В самолете мышь управляет виртуальным инструктором (тянет нос)
+      // Мышь двигает виртуальный прицел
       planeTargetPitch -= e.movementY * 0.003;
       planeTargetYaw -= e.movementX * 0.003;
       
-      // Ограничиваем, чтобы самолет не перевернулся резко
       planeTargetPitch = THREE.MathUtils.clamp(planeTargetPitch, -1.0, 1.0);
       planeTargetYaw = THREE.MathUtils.clamp(planeTargetYaw, -1.0, 1.0);
     }
   }
 });
 
-// Колесико мыши
 addEventListener('wheel', e => {
   if (state.running && player && !state.isPreparePhase && !state.isZMenuOpen) {
     if (player.userData.type === 'tank') {
       state.cameraZoom += e.deltaY * 0.001;
       state.cameraZoom = THREE.MathUtils.clamp(state.cameraZoom, 0.2, 3.0);
     } else {
-      // Управление тягой самолета (газ)
       planeThrottle -= e.deltaY * 0.001;
       planeThrottle = THREE.MathUtils.clamp(planeThrottle, 0.0, 1.0);
     }
@@ -1046,11 +1034,11 @@ function updateTank(dt) {
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА (WAR THUNDER MOUSE AIM) ===
+// === ЛОГИКА САМОЛЕТА ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  // 1. Тяга (W/S и колесико)
+  // Тяга
   if (keys['KeyW']) planeThrottle += 0.5 * dt;
   if (keys['KeyS']) planeThrottle -= 0.5 * dt;
   planeThrottle = THREE.MathUtils.clamp(planeThrottle, 0.0, 1.0);
@@ -1059,7 +1047,7 @@ function updatePlane(dt) {
   const targetSpeed = 50 + (ud.maxSpeed - 50) * planeThrottle * engineFactor;
   ud.speed = THREE.MathUtils.lerp(ud.speed, targetSpeed, 0.5 * dt);
 
-  // 2. Управление (Мышь - инструктор, A/D - крен, Q/E - рыскание)
+  // Управление
   let rollInput = 0;
   if (keys['KeyA']) rollInput = 1;
   if (keys['KeyD']) rollInput = -1;
@@ -1068,36 +1056,40 @@ function updatePlane(dt) {
   if (keys['KeyQ']) yawInput = 1;
   if (keys['KeyE']) yawInput = -1;
 
-  // Плавно применяем крен от клавиш
-  const targetRoll = rollInput * 0.8;
-  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, targetRoll, 3.0 * dt);
-
-  // Виртуальный инструктор: мышь тянет нос
-  // Если игрок жмет C (свободный обзор), инструктор не работает
+  // Если игрок НЕ в свободном обзоре, применяем управление
   if (!state.isFreeLook) {
-    // Тангаж (от мыши)
-    const targetPitch = planeTargetPitch * 0.5;
-    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 2.0 * dt);
+    
+    // 1. Поворот от мыши (виртуальный инструктор)
+    // Вместо lerp к нулю, мы напрямую меняем углы, пока мышь отклонена
+    player.rotation.x += planeTargetPitch * 1.5 * dt;
+    player.rotation.y += planeTargetYaw * 1.0 * dt;
 
-    // Рыскание (от мыши + Q/E)
-    const targetYaw = planeTargetYaw * 0.5 + yawInput * 0.5;
-    player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, targetYaw, 2.0 * dt);
-  } else {
-    // В свободном обзоре самолет летит прямо
-    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 2.0 * dt);
-    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
-    player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, player.rotation.y, 1.0 * dt);
+    // 2. Крен от клавиш A/D
+    // Автовыравнивание крена, если игрок не жмет A/D и мышь в центре
+    if (rollInput !== 0) {
+      player.rotation.z += rollInput * 2.5 * dt;
+    } else if (Math.abs(planeTargetYaw) < 0.1) {
+      // Выравниваем крен только если мышь не отклонена (чтобы можно было виражить)
+      player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
+    }
+
+    // 3. Рыскание от клавиш Q/E (независимо от мыши)
+    player.rotation.y += yawInput * 1.2 * dt;
+
   }
 
-  // Возврат мыши в центр для следующего кадра (чтобы инструктор не держал самолет вечно)
+  // Ограничиваем крен, чтобы не перевернуться
+  player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
+
+  // Возврат мыши в центр (чтобы самолет не крутился вечно)
   planeTargetPitch *= 0.9;
   planeTargetYaw *= 0.9;
 
-  // 3. Движение
+  // Движение
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  // 4. Столкновение с землей
+  // Земля
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
@@ -1261,13 +1253,11 @@ function updateCamera(dt) {
     camera.position.lerp(targetPos, 5 * dt);
     
     if (state.isFreeLook) {
-      // Свободный обзор (камера просто смотрит вперед)
       const lookAt = player.position.clone()
         .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
       camera.lookAt(lookAt);
       camera.up.copy(up);
     } else {
-      // Обычный обзор
       const lookAt = player.position.clone()
         .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
       camera.lookAt(lookAt);
@@ -1449,7 +1439,7 @@ function startGame() {
   state.prepTime = 15;
   state.isZMenuOpen = false;
   state.cameraZoom = 1.0;
-  planeThrottle = 0.5; // Сброс тяги
+  planeThrottle = 0.5;
   targetYaw = 0; targetPitch = 0;
   planeTargetPitch = 0; planeTargetYaw = 0;
   document.getElementById('start-timer').style.display = 'block';
