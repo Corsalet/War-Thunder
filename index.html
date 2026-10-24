@@ -251,9 +251,6 @@
 <script type="module">
 import * as THREE from 'three';
 
-// ============================================================
-// СОСТОЯНИЕ
-// ============================================================
 const state = {
   nation: 'ussr',
   type: 'tank',
@@ -274,9 +271,6 @@ const state = {
   isFreeLook: false, 
 };
 
-// ============================================================
-// СЦЕНА
-// ============================================================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87a7c7);
 scene.fog = new THREE.Fog(0x87a7c7, 400, 2000);
@@ -304,9 +298,6 @@ scene.add(sun);
 const raycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
 
-// ============================================================
-// ГЕНЕРАЦИЯ КАРТ
-// ============================================================
 let mapGroup = null;
 let groundMesh = null;
 
@@ -471,9 +462,6 @@ function loadMap(idx) {
   });
 }
 
-// ============================================================
-// МОДЕЛИ
-// ============================================================
 function makeTank(nation) {
   const g = new THREE.Group();
   const isUSSR = nation === 'ussr';
@@ -649,9 +637,6 @@ function makeVehicle(nation, type) {
   return type === 'tank' ? makeTank(nation) : makePlane(nation);
 }
 
-// ============================================================
-// ИГРОК И БОТЫ
-// ============================================================
 let player = null;
 const shells = [];
 const particles = [];
@@ -735,9 +720,6 @@ function spawnBots() {
   }
 }
 
-// ============================================================
-// СНАРЯДЫ
-// ============================================================
 function spawnShell(origin, direction, speed, damage, owner) {
   const isAP = damage > 30;
   const geo = isAP
@@ -768,9 +750,6 @@ function spawnParticle(pos, color, size, life) {
   )});
 }
 
-// ============================================================
-// БРОНЯ
-// ============================================================
 function getArmorAtPoint(vehicle, worldPoint) {
   const local = vehicle.worldToLocal(worldPoint.clone());
   const ud = vehicle.userData;
@@ -875,9 +854,6 @@ function handleHit(shell) {
   return false;
 }
 
-// ============================================================
-// УПРАВЛЕНИЕ
-// ============================================================
 const keys = {};
 addEventListener('keydown', e => { 
   keys[e.code] = true; 
@@ -932,7 +908,6 @@ addEventListener('mousemove', e => {
       targetPitch -= e.movementY * 0.002;
       targetPitch = THREE.MathUtils.clamp(targetPitch, -0.15, 0.15);
     } else {
-      // Мышь двигает виртуальный прицел
       planeTargetPitch -= e.movementY * 0.003;
       planeTargetYaw -= e.movementX * 0.003;
       
@@ -1009,7 +984,6 @@ function tryFire() {
   if (isTank) player.userData.turret.rotation.x -= 0.02;
 }
 
-// === ЛОГИКА ТАНКА ===
 function updateTank(dt) {
   const ud = player.userData;
   let move = 0, turn = 0;
@@ -1034,11 +1008,10 @@ function updateTank(dt) {
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ЛОГИКА САМОЛЕТА ===
+// === СТАРАЯ ФИЗИКА САМОЛЕТА (LERPS) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
-  // Тяга
   if (keys['KeyW']) planeThrottle += 0.5 * dt;
   if (keys['KeyS']) planeThrottle -= 0.5 * dt;
   planeThrottle = THREE.MathUtils.clamp(planeThrottle, 0.0, 1.0);
@@ -1047,7 +1020,6 @@ function updatePlane(dt) {
   const targetSpeed = 50 + (ud.maxSpeed - 50) * planeThrottle * engineFactor;
   ud.speed = THREE.MathUtils.lerp(ud.speed, targetSpeed, 0.5 * dt);
 
-  // Управление
   let rollInput = 0;
   if (keys['KeyA']) rollInput = 1;
   if (keys['KeyD']) rollInput = -1;
@@ -1056,40 +1028,31 @@ function updatePlane(dt) {
   if (keys['KeyQ']) yawInput = 1;
   if (keys['KeyE']) yawInput = -1;
 
-  // Если игрок НЕ в свободном обзоре, применяем управление
   if (!state.isFreeLook) {
-    
-    // 1. Поворот от мыши (виртуальный инструктор)
-    // Вместо lerp к нулю, мы напрямую меняем углы, пока мышь отклонена
+    // Поворот от мыши (плавный)
     player.rotation.x += planeTargetPitch * 1.5 * dt;
     player.rotation.y += planeTargetYaw * 1.0 * dt;
 
-    // 2. Крен от клавиш A/D
-    // Автовыравнивание крена, если игрок не жмет A/D и мышь в центре
+    // Крен
     if (rollInput !== 0) {
       player.rotation.z += rollInput * 2.5 * dt;
     } else if (Math.abs(planeTargetYaw) < 0.1) {
-      // Выравниваем крен только если мышь не отклонена (чтобы можно было виражить)
       player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
     }
 
-    // 3. Рыскание от клавиш Q/E (независимо от мыши)
+    // Рыскание
     player.rotation.y += yawInput * 1.2 * dt;
-
   }
 
-  // Ограничиваем крен, чтобы не перевернуться
   player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
 
-  // Возврат мыши в центр (чтобы самолет не крутился вечно)
+  // Возврат мыши в центр
   planeTargetPitch *= 0.9;
   planeTargetYaw *= 0.9;
 
-  // Движение
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   player.position.addScaledVector(forward, ud.speed * dt);
 
-  // Земля
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
@@ -1211,9 +1174,6 @@ function updateParticles(dt) {
   }
 }
 
-// ============================================================
-// КАМЕРА
-// ============================================================
 function updateCamera(dt) {
   if (!player) return;
   const isTank = player.userData.type === 'tank';
@@ -1266,9 +1226,6 @@ function updateCamera(dt) {
   }
 }
 
-// ============================================================
-// HUD
-// ============================================================
 const minimap = document.getElementById('minimap');
 const mctx = minimap.getContext('2d');
 
@@ -1368,9 +1325,6 @@ function updateMarkers() {
   }
 }
 
-// ============================================================
-// ГЛАВНЫЙ ЦИКЛ
-// ============================================================
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -1405,9 +1359,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// ============================================================
-// МЕНЮ
-// ============================================================
 document.querySelectorAll('#nationRow .btn').forEach(b => {
   b.onclick = () => {
     document.querySelectorAll('#nationRow .btn').forEach(x => x.classList.remove('active'));
@@ -1492,9 +1443,6 @@ document.getElementById('restartBtn').onclick = () => {
   document.getElementById('menu').style.display = 'flex';
 };
 
-// ============================================================
-// СТАРТ
-// ============================================================
 loadMap(0);
 animate();
 
