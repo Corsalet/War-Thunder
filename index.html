@@ -22,33 +22,16 @@
   #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
 
   #plane-crosshair {
-    position: absolute; top: 50%; left: 50%; width: 200px; height: 200px;
-    transform: translate(-50%,-50%); display: none; pointer-events: none;
-  }
-  #plane-crosshair::after {
-    content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
-    background: #0f0; border-radius: 50%; transform: translate(-50%, -50%);
-    box-shadow: 0 0 5px #0f0;
-  }
-  .plane-line-h {
-    position: absolute; top: 50%; left: 0; width: 100%; height: 2px;
-    background: rgba(0, 255, 0, 0.5); transform: translateY(-50%);
-  }
-  .plane-line-v {
-    position: absolute; top: 0; left: 50%; width: 2px; height: 100%;
-    background: rgba(0, 255, 0, 0.5); transform: translateX(-50%);
-  }
-  .plane-ring {
     position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
-    border: 2px solid rgba(0, 255, 0, 0.7); border-radius: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%,-50%); display: none; pointer-events: none;
+    border: 2px solid rgba(255,255,0,0.8); border-radius: 50%;
+    box-shadow: 0 0 10px rgba(255,255,0,0.5);
   }
-  .plane-ticks {
-    position: absolute; top: 50%; left: 50%; width: 100%;
-    transform: translate(-50%, -50%); display: flex; justify-content: space-between;
+  #plane-crosshair::before, #plane-crosshair::after {
+    content: ''; position: absolute; background: rgba(255,255,0,0.8);
   }
-  .plane-tick { width: 2px; height: 10px; background: rgba(0, 255, 0, 0.7); }
-  .plane-tick.long { height: 20px; }
+  #plane-crosshair::before { width: 2px; height: 8px; top: 50%; left: -10px; transform: translateY(-50%); }
+  #plane-crosshair::after { width: 2px; height: 8px; top: 50%; right: -10px; transform: translateY(-50%); }
 
   #sniper-scope {
     position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
@@ -167,18 +150,7 @@
   
   <div id="tank-crosshair"></div>
   
-  <div id="plane-crosshair">
-    <div class="plane-line-h"></div>
-    <div class="plane-line-v"></div>
-    <div class="plane-ring"></div>
-    <div class="plane-ticks">
-      <div class="plane-tick"></div>
-      <div class="plane-tick"></div>
-      <div class="plane-tick long"></div>
-      <div class="plane-tick"></div>
-      <div class="plane-tick"></div>
-    </div>
-  </div>
+  <div id="plane-crosshair"></div>
   
   <div id="sniper-scope">
     <div class="scope-grid">
@@ -232,7 +204,8 @@
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
     Танк: WASD — движение, Мышь — башня, Колесико — зум, Shift — оптика<br>
-    Самолёт: Мышь — прицел, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум
+    Самолёт: Мышь — направление, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум<br>
+    Выход из боя: Esc
   </p>
 </div>
 
@@ -240,6 +213,7 @@
   <h2>СВОБОДНЫЙ КУРСОР</h2>
   <p style="margin-bottom: 20px;">Нажмите Z, чтобы вернуться в бой</p>
   <button class="btn" id="resumeBtn">Продолжить</button>
+  <button class="btn" id="exitBtn" style="background: #300; color: #f00; border-color: #f00;">Выйти из боя</button>
 </div>
 
 <div id="end-screen">
@@ -630,6 +604,9 @@ function makePlane(nation) {
   g.userData.maxSpeed = 200;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
+  
+  g.userData.targetQuat = new THREE.Quaternion();
+  
   return g;
 }
 
@@ -858,6 +835,15 @@ const keys = {};
 addEventListener('keydown', e => { 
   keys[e.code] = true; 
   
+  if (e.code === 'Escape' && state.running) {
+    if (!state.isZMenuOpen) {
+      state.isZMenuOpen = true;
+      document.getElementById('z-menu').style.display = 'flex';
+      document.exitPointerLock();
+      document.body.style.cursor = 'default';
+    }
+  }
+
   if (e.code === 'ShiftLeft' && player && player.userData.type === 'tank' && !state.isPreparePhase) {
     state.isSniperMode = !state.isSniperMode;
     document.getElementById('sniper-scope').style.display = state.isSniperMode ? 'block' : 'none';
@@ -1008,7 +994,7 @@ function updateTank(dt) {
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === СТАРАЯ ФИЗИКА САМОЛЕТА (LERPS) ===
+// === КВАТЕРНИОННАЯ ФИЗИКА САМОЛЕТА ===
 function updatePlane(dt) {
   const ud = player.userData;
 
@@ -1020,44 +1006,47 @@ function updatePlane(dt) {
   const targetSpeed = 50 + (ud.maxSpeed - 50) * planeThrottle * engineFactor;
   ud.speed = THREE.MathUtils.lerp(ud.speed, targetSpeed, 0.5 * dt);
 
-  let rollInput = 0;
-  if (keys['KeyA']) rollInput = 1;
-  if (keys['KeyD']) rollInput = -1;
-
-  let yawInput = 0;
-  if (keys['KeyQ']) yawInput = 1;
-  if (keys['KeyE']) yawInput = -1;
-
-  if (!state.isFreeLook) {
-    // Поворот от мыши (плавный)
-    player.rotation.x += planeTargetPitch * 1.5 * dt;
-    player.rotation.y += planeTargetYaw * 1.0 * dt;
-
-    // Крен
-    if (rollInput !== 0) {
-      player.rotation.z += rollInput * 2.5 * dt;
-    } else if (Math.abs(planeTargetYaw) < 0.1) {
-      player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
-    }
-
-    // Рыскание
-    player.rotation.y += yawInput * 1.2 * dt;
-  }
-
-  player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
-
-  // Возврат мыши в центр
-  planeTargetPitch *= 0.9;
-  planeTargetYaw *= 0.9;
-
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-  player.position.addScaledVector(forward, ud.speed * dt);
+  
+  const pitchOffset = -planeTargetPitch * 1.0; 
+  const yawOffset = -planeTargetYaw * 1.0;
+
+  const targetEuler = new THREE.Euler(
+    player.rotation.x + pitchOffset,
+    player.rotation.y + yawOffset,
+    player.rotation.z,
+    'YXZ'
+  );
+  
+  ud.targetQuat.setFromEuler(targetEuler);
+
+  const turnRate = Math.max(0.5, ud.speed * 0.02) * dt; 
+  player.quaternion.rotateTowards(ud.targetQuat, turnRate);
+
+  if (keys['KeyA']) player.rotateZ(1.5 * dt);
+  if (keys['KeyD']) player.rotateZ(-1.5 * dt);
+  if (keys['KeyQ']) player.rotateY(0.8 * dt);
+  if (keys['KeyE']) player.rotateY(-0.8 * dt);
+
+  planeTargetPitch *= 0.95;
+  planeTargetYaw *= 0.95;
+
+  const newForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  player.position.addScaledVector(newForward, ud.speed * dt);
+
+  if (!keys['KeyA'] && !keys['KeyD']) {
+    const euler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ');
+    euler.z = THREE.MathUtils.lerp(euler.z, 0, 1.5 * dt);
+    player.quaternion.setFromEuler(euler);
+  }
 
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
-    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 5 * dt);
-    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 5 * dt);
+    const euler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ');
+    euler.x = THREE.MathUtils.lerp(euler.x, 0, 5 * dt);
+    euler.z = THREE.MathUtils.lerp(euler.z, 0, 5 * dt);
+    player.quaternion.setFromEuler(euler);
   }
 }
 
@@ -1174,6 +1163,60 @@ function updateParticles(dt) {
   }
 }
 
+// ============================================================
+// УПРЕЖДАЮЩИЙ ПРИЦЕЛ (AIM ASSIST)
+// ============================================================
+function updateLeadIndicator() {
+  if (!player || state.type !== 'plane') return;
+  const indicator = document.getElementById('plane-crosshair');
+  
+  let bestTarget = null;
+  let minAngle = Math.PI / 4; 
+  
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  
+  for (const enemy of state.enemies) {
+    if (enemy.type !== 'plane') continue; 
+    
+    const toEnemy = enemy.mesh.position.clone().sub(player.position);
+    const dist = toEnemy.length();
+    if (dist > 1000) continue;
+    
+    toEnemy.normalize();
+    const angle = forward.angleTo(toEnemy);
+    
+    if (angle < minAngle) {
+      minAngle = angle;
+      bestTarget = enemy;
+    }
+  }
+
+  if (bestTarget) {
+    indicator.style.display = 'block';
+    
+    const dist = player.position.distanceTo(bestTarget.mesh.position);
+    const bulletSpeed = 300; 
+    const timeToHit = dist / bulletSpeed;
+    
+    const enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
+    
+    const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
+    
+    const screenPos = leadPos.project(camera);
+    const x = (screenPos.x * 0.5 + 0.5) * innerWidth;
+    const y = (-screenPos.y * 0.5 + 0.5) * innerHeight;
+    
+    indicator.style.left = `${x}px`;
+    indicator.style.top = `${y}px`;
+    indicator.style.transform = 'translate(-50%, -50%)';
+  } else {
+    indicator.style.display = 'block';
+    indicator.style.left = '50%';
+    indicator.style.top = '50%';
+    indicator.style.transform = 'translate(-50%, -50%)';
+  }
+}
+
 function updateCamera(dt) {
   if (!player) return;
   const isTank = player.userData.type === 'tank';
@@ -1212,17 +1255,10 @@ function updateCamera(dt) {
       .addScaledVector(up, 8 * zoomMult);
     camera.position.lerp(targetPos, 5 * dt);
     
-    if (state.isFreeLook) {
-      const lookAt = player.position.clone()
-        .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
-      camera.lookAt(lookAt);
-      camera.up.copy(up);
-    } else {
-      const lookAt = player.position.clone()
-        .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
-      camera.lookAt(lookAt);
-      camera.up.copy(up);
-    }
+    const lookAt = player.position.clone()
+      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion), 40);
+    camera.lookAt(lookAt);
+    camera.up.copy(up);
   }
 }
 
@@ -1350,6 +1386,7 @@ function animate() {
     updateCamera(dt);
     updateHUD();
     updateMarkers();
+    updateLeadIndicator(); 
 
     if (player.userData.type === 'plane' && player.userData.prop) {
       player.userData.prop.rotation.z += (50 + planeThrottle * 100) * dt;
@@ -1430,6 +1467,11 @@ document.getElementById('resumeBtn').onclick = () => {
   document.getElementById('z-menu').style.display = 'none';
   document.body.requestPointerLock();
   document.body.style.cursor = 'none';
+};
+document.getElementById('exitBtn').onclick = () => {
+  state.isZMenuOpen = false;
+  document.getElementById('z-menu').style.display = 'none';
+  endGame(false);
 };
 document.getElementById('restartBtn').onclick = () => {
   scene.remove(player);
