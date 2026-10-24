@@ -26,6 +26,7 @@
     transform: translate(-50%,-50%); display: none; pointer-events: none;
     border: 2px solid rgba(255,255,0,0.8); border-radius: 50%;
     box-shadow: 0 0 10px rgba(255,255,0,0.5);
+    transition: left 0.05s linear, top 0.05s linear; /* Плавное движение кружка */
   }
   #plane-crosshair::before, #plane-crosshair::after {
     content: ''; position: absolute; background: rgba(255,255,0,0.8);
@@ -204,7 +205,7 @@
   </div>
   <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
     Танк: WASD — движение, Мышь — башня, Колесико — зум, Shift — оптика<br>
-    Самолёт: Мышь — направление, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум<br>
+    Самолёт: Мышь — прицел, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум<br>
     Выход из боя: Esc
   </p>
 </div>
@@ -604,9 +605,6 @@ function makePlane(nation) {
   g.userData.maxSpeed = 200;
   g.userData.maxAmmo = 200;
   g.userData.ammo = 200;
-  
-  g.userData.targetQuat = new THREE.Quaternion();
-  
   return g;
 }
 
@@ -994,7 +992,7 @@ function updateTank(dt) {
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === КВАТЕРНИОННАЯ ФИЗИКА САМОЛЕТА ===
+// === ВОЗВРАЩЕННАЯ ФИЗИКА САМОЛЕТА (LERPS) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
@@ -1006,47 +1004,40 @@ function updatePlane(dt) {
   const targetSpeed = 50 + (ud.maxSpeed - 50) * planeThrottle * engineFactor;
   ud.speed = THREE.MathUtils.lerp(ud.speed, targetSpeed, 0.5 * dt);
 
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-  
-  const pitchOffset = -planeTargetPitch * 1.0; 
-  const yawOffset = -planeTargetYaw * 1.0;
+  let rollInput = 0;
+  if (keys['KeyA']) rollInput = 1;
+  if (keys['KeyD']) rollInput = -1;
 
-  const targetEuler = new THREE.Euler(
-    player.rotation.x + pitchOffset,
-    player.rotation.y + yawOffset,
-    player.rotation.z,
-    'YXZ'
-  );
-  
-  ud.targetQuat.setFromEuler(targetEuler);
+  let yawInput = 0;
+  if (keys['KeyQ']) yawInput = 1;
+  if (keys['KeyE']) yawInput = -1;
 
-  const turnRate = Math.max(0.5, ud.speed * 0.02) * dt; 
-  player.quaternion.rotateTowards(ud.targetQuat, turnRate);
+  if (!state.isFreeLook) {
+    player.rotation.x += planeTargetPitch * 1.5 * dt;
+    player.rotation.y += planeTargetYaw * 1.0 * dt;
 
-  if (keys['KeyA']) player.rotateZ(1.5 * dt);
-  if (keys['KeyD']) player.rotateZ(-1.5 * dt);
-  if (keys['KeyQ']) player.rotateY(0.8 * dt);
-  if (keys['KeyE']) player.rotateY(-0.8 * dt);
+    if (rollInput !== 0) {
+      player.rotation.z += rollInput * 2.5 * dt;
+    } else if (Math.abs(planeTargetYaw) < 0.1) {
+      player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 2.0 * dt);
+    }
 
-  planeTargetPitch *= 0.95;
-  planeTargetYaw *= 0.95;
-
-  const newForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-  player.position.addScaledVector(newForward, ud.speed * dt);
-
-  if (!keys['KeyA'] && !keys['KeyD']) {
-    const euler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ');
-    euler.z = THREE.MathUtils.lerp(euler.z, 0, 1.5 * dt);
-    player.quaternion.setFromEuler(euler);
+    player.rotation.y += yawInput * 1.2 * dt;
   }
+
+  player.rotation.z = THREE.MathUtils.clamp(player.rotation.z, -Math.PI/2, Math.PI/2);
+
+  planeTargetPitch *= 0.9;
+  planeTargetYaw *= 0.9;
+
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  player.position.addScaledVector(forward, ud.speed * dt);
 
   const groundY = getTerrainHeight(player.position.x, player.position.z);
   if (player.position.y < groundY + 5) {
     player.position.y = groundY + 5;
-    const euler = new THREE.Euler().setFromQuaternion(player.quaternion, 'YXZ');
-    euler.x = THREE.MathUtils.lerp(euler.x, 0, 5 * dt);
-    euler.z = THREE.MathUtils.lerp(euler.z, 0, 5 * dt);
-    player.quaternion.setFromEuler(euler);
+    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 5 * dt);
+    player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 5 * dt);
   }
 }
 
@@ -1164,23 +1155,22 @@ function updateParticles(dt) {
 }
 
 // ============================================================
-// УПРЕЖДАЮЩИЙ ПРИЦЕЛ (AIM ASSIST)
+// УПРЕЖДАЮЩИЙ ПРИЦЕЛ (AIM ASSIST) ДЛЯ ВСЕХ ЦЕЛЕЙ
 // ============================================================
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
   const indicator = document.getElementById('plane-crosshair');
   
   let bestTarget = null;
-  let minAngle = Math.PI / 4; 
+  let minAngle = Math.PI / 6; // 30 градусов конус
   
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   
   for (const enemy of state.enemies) {
-    if (enemy.type !== 'plane') continue; 
-    
+    // Теперь донаводка работает и для танков, и для самолетов
     const toEnemy = enemy.mesh.position.clone().sub(player.position);
     const dist = toEnemy.length();
-    if (dist > 1000) continue;
+    if (dist > 800) continue;
     
     toEnemy.normalize();
     const angle = forward.angleTo(toEnemy);
@@ -1195,13 +1185,19 @@ function updateLeadIndicator() {
     indicator.style.display = 'block';
     
     const dist = player.position.distanceTo(bestTarget.mesh.position);
-    const bulletSpeed = 300; 
+    const bulletSpeed = 300; // Скорость снаряда
     const timeToHit = dist / bulletSpeed;
     
-    const enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
+    // Скорость врага (если танк - он почти стоит, если самолет - летит)
+    let enemyVel = new THREE.Vector3(0, 0, 0);
+    if (bestTarget.type === 'plane') {
+      enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
+    }
     
+    // Точка упреждения
     const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
     
+    // Проецируем в 2D
     const screenPos = leadPos.project(camera);
     const x = (screenPos.x * 0.5 + 0.5) * innerWidth;
     const y = (-screenPos.y * 0.5 + 0.5) * innerHeight;
@@ -1210,6 +1206,7 @@ function updateLeadIndicator() {
     indicator.style.top = `${y}px`;
     indicator.style.transform = 'translate(-50%, -50%)';
   } else {
+    // Если цели нет, ставим кружок в центр
     indicator.style.display = 'block';
     indicator.style.left = '50%';
     indicator.style.top = '50%';
