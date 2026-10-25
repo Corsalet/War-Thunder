@@ -78,6 +78,17 @@
   .world-marker { position: absolute; transform: translate(-50%, -50%); font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px #000, 0 0 5px #000; white-space: nowrap; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
   .hp-bar { width: 50px; height: 5px; background: rgba(0,0,0,0.8); border: 1px solid #000; margin-top: 2px; }
   .hp-fill { height: 100%; background: #f00; width: 100%; }
+  
+  /* Всплывающий текст урона */
+  .damage-text {
+    position: absolute; color: #ff0; font-size: 18px; font-weight: bold;
+    text-shadow: 1px 1px 2px #000; pointer-events: none;
+    animation: floatUp 1s forwards;
+  }
+  @keyframes floatUp {
+    0% { transform: translate(-50%, -50%); opacity: 1; }
+    100% { transform: translate(-50%, -150%); opacity: 0; }
+  }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -374,6 +385,7 @@ function makePlane(nation) {
 let player = null;
 const shells = [];
 const particles = [];
+const damageTexts = [];
 
 function spawnPlayer() {
   player = state.type === 'tank' ? makeTank(state.nation) : makePlane(state.nation);
@@ -435,6 +447,14 @@ function spawnParticle(pos, color, size, life) {
   particles.push({ mesh: p, life, maxLife: life, velocity: new THREE.Vector3((Math.random()-0.5)*4, Math.random()*4, (Math.random()-0.5)*4) });
 }
 
+function spawnDamageText(pos, damage) {
+  const el = document.createElement('div');
+  el.className = 'damage-text';
+  el.textContent = `-${Math.round(damage)}`;
+  document.getElementById('markers-container').appendChild(el);
+  damageTexts.push({ el, pos: pos.clone(), life: 1.0 });
+}
+
 function getArmorAtPoint(vehicle, worldPoint) {
   const local = vehicle.worldToLocal(worldPoint.clone());
   const ud = vehicle.userData;
@@ -468,6 +488,7 @@ function handleHit(shell) {
         target.userData.health -= shell.damage * 0.6;
         target.userData.modules[armorInfo.module] -= shell.damage;
         spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
+        spawnDamageText(shell.mesh.position, shell.damage * 0.6); // Текст урона
         msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`; msg.style.color = '#ff6600';
         
         if (target.ui) {
@@ -628,7 +649,6 @@ function updatePlane(dt) {
   }
 }
 
-// ИСПРАВЛЕННАЯ ЛОГИКА БОТОВ (Стреляют только вперед)
 function updateBots(dt) {
   if (state.isPreparePhase) return;
   const now = performance.now() / 1000;
@@ -658,13 +678,11 @@ function updateBots(dt) {
           }
         }
       } else {
-        // Логика самолетов ботов
         bot.mesh.rotation.y += 0.1 * dt; bot.mesh.rotation.z = 0.4;
         bot.mesh.position.addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion), 120 * dt);
         if (bot.mesh.position.y < 50) bot.mesh.position.y = 50;
         if (bot.mesh.position.length() > 2500) bot.mesh.position.set((Math.random()-0.5)*2000, 200, (Math.random()-0.5)*2000);
         
-        // Проверка: стреляем ТОЛЬКО если цель впереди (в радиусе 60 градусов)
         if (closestTarget && minDist < 600 && now - bot.lastShot > 1.0) {
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
           const toTarget = closestTarget.position.clone().sub(bot.mesh.position).normalize();
@@ -698,7 +716,21 @@ function updateParticles(dt) {
   }
 }
 
-// ТОЧНЫЙ РАСЧЕТ ДОНАВОДКИ (Используем прямую проекцию)
+function updateDamageTexts(dt) {
+  for (let i = damageTexts.length - 1; i >= 0; i--) {
+    const dtObj = damageTexts[i]; dtObj.life -= dt;
+    const screenPos = dtObj.pos.clone().project(camera);
+    if (screenPos.z > 1 || screenPos.z < -1) { dtObj.el.style.display = 'none'; }
+    else {
+      dtObj.el.style.display = 'block';
+      dtObj.el.style.left = `${(screenPos.x * 0.5 + 0.5) * innerWidth}px`;
+      dtObj.el.style.top = `${(-screenPos.y * 0.5 + 0.5) * innerHeight}px`;
+    }
+    if (dtObj.life <= 0) { dtObj.el.remove(); damageTexts.splice(i, 1); }
+  }
+}
+
+// ТОЧНЫЙ РАСЧЕТ ДОНАВОДКИ
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
   const indicator = document.getElementById('plane-crosshair-lead');
@@ -805,7 +837,7 @@ function animate() {
       if (player.userData.type === 'tank') updateTank(dt); else updatePlane(dt);
       updateBots(dt); updateShells(dt);
     }
-    updateParticles(dt); updateCamera(dt); updateHUD(); updateMarkers(); updateLeadIndicator();
+    updateParticles(dt); updateDamageTexts(dt); updateCamera(dt); updateHUD(); updateMarkers(); updateLeadIndicator();
     if (player.userData.type === 'plane' && player.userData.prop) player.userData.prop.rotation.z += (50 + planeThrottle * 100) * dt;
   }
   renderer.render(scene, camera);
