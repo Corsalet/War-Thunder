@@ -79,7 +79,6 @@
   .hp-bar { width: 50px; height: 5px; background: rgba(0,0,0,0.8); border: 1px solid #000; margin-top: 2px; }
   .hp-fill { height: 100%; background: #f00; width: 100%; }
   
-  /* Всплывающий текст урона */
   .damage-text {
     position: absolute; color: #ff0; font-size: 18px; font-weight: bold;
     text-shadow: 1px 1px 2px #000; pointer-events: none;
@@ -488,7 +487,7 @@ function handleHit(shell) {
         target.userData.health -= shell.damage * 0.6;
         target.userData.modules[armorInfo.module] -= shell.damage;
         spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
-        spawnDamageText(shell.mesh.position, shell.damage * 0.6); // Текст урона
+        spawnDamageText(shell.mesh.position, shell.damage * 0.6);
         msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`; msg.style.color = '#ff6600';
         
         if (target.ui) {
@@ -498,7 +497,7 @@ function handleHit(shell) {
 
         if (target.userData.health <= 0) {
           scene.remove(target);
-          if (target.ui && target.ui.parentNode) target.ui.parentNode.removeChild(target.ui);
+          if (target.ui && target.ui.parentNode) target.ui.parentNode.removeChild(target.ui); // УДАЛЕНИЕ МАРКЕРА
           
           if (isEnemy) { state.enemies = state.enemies.filter(e => e.mesh !== target); state.score += 100; state.kills++; msg.textContent = `УНИЧТОЖЕН! +100`; msg.style.color = '#ffff00'; }
           else if (target === player) endGame(false);
