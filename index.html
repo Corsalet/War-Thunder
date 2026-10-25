@@ -594,7 +594,9 @@ const clock = new THREE.Clock();
 function tryFire() {
   const now = performance.now() / 1000;
   if (now - player.userData.lastShot < player.userData.reloadTime) return;
-  if (player.userData.ammo <= 0) { document.getElementById('reload').textContent = 'НЕТ ПАТРОНОВ'; document.getElementById('reload').style.color = '#f00'; return; }
+  // Бесконечные патроны для теста
+  // if (player.userData.ammo <= 0) { document.getElementById('reload').textContent = 'НЕТ ПАТРОНОВ'; document.getElementById('reload').style.color = '#f00'; return; }
+  
   player.userData.lastShot = now; player.userData.ammo--;
 
   const muzzleWorld = new THREE.Vector3(); player.userData.muzzle.getWorldPosition(muzzleWorld);
@@ -729,7 +731,6 @@ function updateDamageTexts(dt) {
   }
 }
 
-// ТОЧНЫЙ РАСЧЕТ ДОНАВОДКИ
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
   const indicator = document.getElementById('plane-crosshair-lead');
