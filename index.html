@@ -15,9 +15,7 @@
     border-radius: 50%; box-shadow: 0 0 10px rgba(0,255,0,0.5);
     display: flex; justify-content: center; align-items: center;
   }
-  #tank-crosshair::before, #tank-crosshair::after {
-    content: ''; position: absolute; background: rgba(0,255,0,0.9);
-  }
+  #tank-crosshair::before, #tank-crosshair::after { content: ''; position: absolute; background: rgba(0,255,0,0.9); }
   #tank-crosshair::before { width: 2px; height: 10px; top: -15px; }
   #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
 
@@ -27,9 +25,7 @@
     border: 2px solid rgba(0,255,0,0.6); border-radius: 50%;
     box-shadow: 0 0 10px rgba(0,255,0,0.3);
   }
-  #plane-crosshair-main::before, #plane-crosshair-main::after {
-    content: ''; position: absolute; background: rgba(0,255,0,0.8);
-  }
+  #plane-crosshair-main::before, #plane-crosshair-main::after { content: ''; position: absolute; background: rgba(0,255,0,0.8); }
   #plane-crosshair-main::before { width: 2px; height: 20px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
   #plane-crosshair-main::after { width: 20px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
@@ -45,113 +41,42 @@
     background: #ff0; border-radius: 50%; transform: translate(-50%, -50%);
   }
 
-  #sniper-scope {
-    position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
-  }
-  #sniper-scope::before {
-    content: ''; position: absolute; inset: 0;
-    box-shadow: inset 0 0 150px 100px rgba(0,0,0,0.95);
-    background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 70%);
-  }
-  .scope-grid {
-    position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
-    transform: translate(-50%, -50%);
-  }
+  #sniper-scope { position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none; }
+  #sniper-scope::before { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 150px 100px rgba(0,0,0,0.95); background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 70%); }
+  .scope-grid { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; transform: translate(-50%, -50%); }
   .scope-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(0,0,0,0.8); }
   .scope-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(0,0,0,0.8); }
-  .scope-center {
-    position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
-    transform: translate(-50%, -50%); border: 1px solid rgba(0,0,0,0.9); border-radius: 50%;
-    display: flex; justify-content: center; align-items: center;
-  }
+  .scope-center { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); border: 1px solid rgba(0,0,0,0.9); border-radius: 50%; display: flex; justify-content: center; align-items: center; }
   .scope-center::after { content: ''; width: 4px; height: 4px; background: #000; border-radius: 50%; }
-  .scope-scale {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, 20px);
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-  }
+  .scope-scale { position: absolute; top: 50%; left: 50%; transform: translate(-50%, 20px); display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .scope-scale div { width: 2px; height: 6px; background: #000; position: relative; }
   .scope-scale div.long { height: 10px; width: 2px; }
   .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
 
-  #hud-bottom {
-    position: absolute; bottom: 20px; left: 20px; right: 20px;
-    display: flex; justify-content: space-between; align-items: flex-end;
-    text-shadow: 0 0 4px #000, 0 0 8px #000;
-  }
-  .panel {
-    background: rgba(0,20,0,0.6); border: 1px solid rgba(0,255,0,0.4);
-    padding: 8px 12px; border-radius: 4px; font-size: 13px; line-height: 1.5;
-  }
-  #minimap {
-    position: absolute; top: 20px; right: 20px; width: 200px; height: 200px;
-    background: rgba(0,20,0,0.7); border: 1px solid rgba(0,255,0,0.5);
-    border-radius: 4px;
-  }
-  #topinfo {
-    position: absolute; top: 20px; left: 20px; font-size: 14px;
-    text-shadow: 0 0 4px #000;
-  }
-  #compass {
-    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-    width: 400px; height: 30px; border-bottom: 2px solid #0f0;
-    display: flex; justify-content: space-between; align-items: flex-end;
-    font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000;
-    padding-bottom: 5px;
-  }
-  #menu {
-    position: absolute; inset: 0; background: #000;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 10; color: #0f0; gap: 16px; cursor: default;
-  }
-  #z-menu {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.9);
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 15; color: #0f0; gap: 16px; cursor: default;
-  }
-  .btn {
-    pointer-events: all; cursor: pointer; background: transparent;
-    border: 2px solid #0f0; color: #0f0; padding: 12px 40px;
-    font-family: inherit; font-size: 16px; letter-spacing: 2px;
-    transition: all 0.2s;
-  }
+  #hud-bottom { position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: flex-end; text-shadow: 0 0 4px #000, 0 0 8px #000; }
+  .panel { background: rgba(0,20,0,0.6); border: 1px solid rgba(0,255,0,0.4); padding: 8px 12px; border-radius: 4px; font-size: 13px; line-height: 1.5; }
+  #minimap { position: absolute; top: 20px; right: 20px; width: 200px; height: 200px; background: rgba(0,20,0,0.7); border: 1px solid rgba(0,255,0,0.5); border-radius: 4px; }
+  #topinfo { position: absolute; top: 20px; left: 20px; font-size: 14px; text-shadow: 0 0 4px #000; }
+  #compass { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 400px; height: 30px; border-bottom: 2px solid #0f0; display: flex; justify-content: space-between; align-items: flex-end; font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000; padding-bottom: 5px; }
+  
+  #menu { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: all; z-index: 10; color: #0f0; gap: 16px; cursor: default; }
+  #z-menu { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: all; z-index: 15; color: #0f0; gap: 16px; cursor: default; }
+  .btn { pointer-events: all; cursor: pointer; background: transparent; border: 2px solid #0f0; color: #0f0; padding: 12px 40px; font-family: inherit; font-size: 16px; letter-spacing: 2px; transition: all 0.2s; }
   .btn:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0; }
   .row { display: flex; gap: 12px; }
   .btn.small { padding: 8px 20px; font-size: 13px; }
   .btn.active { background: #0f0; color: #000; }
-  #log {
-    position: absolute; bottom: 120px; left: 20px; font-size: 12px;
-    max-width: 400px; line-height: 1.4; opacity: 0.85;
-  }
+  #log { position: absolute; bottom: 120px; left: 20px; font-size: 12px; max-width: 400px; line-height: 1.4; opacity: 0.85; }
   #log div { animation: fade 4s forwards; }
   @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
-  
   #ammo { font-size: 18px; font-weight: bold; color: #0f0; }
   #ammo.low { color: #ff4400; }
-  
-  #start-timer {
-    position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 80px; font-weight: bold; color: #0f0; text-shadow: 0 0 20px #000;
-    display: none; z-index: 5;
-  }
-
-  #end-screen {
-    position: absolute; inset: 0; background: #000;
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 20; color: #0f0; gap: 20px; cursor: default;
-  }
+  #start-timer { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 80px; font-weight: bold; color: #0f0; text-shadow: 0 0 20px #000; display: none; z-index: 5; }
+  #end-screen { position: absolute; inset: 0; background: #000; display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: all; z-index: 20; color: #0f0; gap: 20px; cursor: default; }
   #end-screen h2 { font-size: 64px; text-shadow: 0 0 20px #0f0; }
   #end-screen.defeat h2 { color: #f00; text-shadow: 0 0 20px #f00; }
-
-  .world-marker {
-    position: absolute; transform: translate(-50%, -50%);
-    font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px #000, 0 0 5px #000;
-    white-space: nowrap; pointer-events: none;
-    display: flex; flex-direction: column; align-items: center;
-  }
-  .hp-bar {
-    width: 50px; height: 5px; background: rgba(0,0,0,0.8); border: 1px solid #000; margin-top: 2px;
-  }
+  .world-marker { position: absolute; transform: translate(-50%, -50%); font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px #000, 0 0 5px #000; white-space: nowrap; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+  .hp-bar { width: 50px; height: 5px; background: rgba(0,0,0,0.8); border: 1px solid #000; margin-top: 2px; }
   .hp-fill { height: 100%; background: #f00; width: 100%; }
 </style>
 <script type="importmap">
@@ -160,31 +85,16 @@
 </head>
 <body>
 <div id="ui">
-  <div id="compass">
-    <span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span>
-  </div>
+  <div id="compass"><span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span></div>
   <div id="tank-crosshair"></div>
   <div id="plane-crosshair-main"></div>
   <div id="plane-crosshair-lead"></div>
-  
   <div id="sniper-scope">
     <div class="scope-grid">
-      <div class="scope-line-h"></div>
-      <div class="scope-line-v"></div>
-      <div class="scope-center"></div>
-      <div class="scope-scale">
-        <div class="long"><span>4</span></div>
-        <div><span>8</span></div>
-        <div><span>12</span></div>
-        <div><span>16</span></div>
-        <div class="long"><span>20</span></div>
-        <div><span>24</span></div>
-        <div><span>28</span></div>
-        <div><span>32</span></div>
-      </div>
+      <div class="scope-line-h"></div><div class="scope-line-v"></div><div class="scope-center"></div>
+      <div class="scope-scale"><div class="long"><span>4</span></div><div><span>8</span></div><div><span>12</span></div><div><span>16</span></div><div class="long"><span>20</span></div><div><span>24</span></div><div><span>28</span></div><div><span>32</span></div></div>
     </div>
   </div>
-
   <div id="topinfo"></div>
   <div id="markers-container"></div>
   <canvas id="minimap" width="200" height="200"></canvas>
@@ -198,8 +108,7 @@
 </div>
 
 <div id="menu">
-  <h1>STEEL FRONT</h1>
-  <p>Прототип в стиле War Thunder</p>
+  <h1>STEEL FRONT</h1><p>Прототип в стиле War Thunder</p>
   <div class="row" id="nationRow">
     <button class="btn small active" data-nation="ussr">СССР</button>
     <button class="btn small" data-nation="germany">Германия</button>
@@ -221,15 +130,13 @@
 </div>
 
 <div id="z-menu">
-  <h2>СВОБОДНЫЙ КУРСОР</h2>
-  <p style="margin-bottom: 20px;">Нажмите Z, чтобы вернуться в бой</p>
+  <h2>СВОБОДНЫЙ КУРСОР</h2><p style="margin-bottom: 20px;">Нажмите Z, чтобы вернуться в бой</p>
   <button class="btn" id="resumeBtn">Продолжить</button>
   <button class="btn" id="exitBtn" style="background: #300; color: #f00; border-color: #f00;">Выйти из боя</button>
 </div>
 
 <div id="end-screen">
-  <h2 id="end-title">ПОБЕДА</h2>
-  <p id="end-stats">Уничтожено: 0</p>
+  <h2 id="end-title">ПОБЕДА</h2><p id="end-stats">Уничтожено: 0</p>
   <button class="btn" id="restartBtn">Вернуться в меню</button>
 </div>
 
@@ -543,60 +450,62 @@ function getArmorAtPoint(vehicle, worldPoint) {
   }
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ УРОНА (Через дистанцию)
 function handleHit(shell) {
-  if (shell.owner === 'player') {
-    for (const enemy of state.enemies) {
-      const box = new THREE.Box3().setFromObject(enemy.mesh);
-      if (box.containsPoint(shell.mesh.position)) {
-        const armorInfo = getArmorAtPoint(enemy.mesh, shell.mesh.position);
-        const shellDir = shell.velocity.clone().normalize();
-        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(enemy.mesh.quaternion);
-        const angle = Math.abs(shellDir.dot(armorNormal));
-        const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
-        const penetrated = shell.damage > effectiveArmor;
-        const log = document.getElementById('log'); const msg = document.createElement('div');
+  const checkHit = (target, isEnemy) => {
+    if (!target) return false;
+    const box = new THREE.Box3().setFromObject(target);
+    // Проверка на пересечение сферы снаряда и коробки цели
+    if (box.distanceToPoint(shell.mesh.position) < 1.5) { 
+      const armorInfo = getArmorAtPoint(target, shell.mesh.position);
+      const shellDir = shell.velocity.clone().normalize();
+      const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(target.quaternion);
+      const angle = Math.abs(shellDir.dot(armorNormal));
+      const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
+      const penetrated = shell.damage > effectiveArmor;
+      
+      const log = document.getElementById('log'); const msg = document.createElement('div');
+      
+      if (penetrated) {
+        target.userData.health -= shell.damage * 0.6;
+        target.userData.modules[armorInfo.module] -= shell.damage;
+        spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
+        msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`; msg.style.color = '#ff6600';
         
-        if (penetrated) {
-          enemy.health -= shell.damage * 0.6; enemy.mesh.userData.modules[armorInfo.module] -= shell.damage;
-          spawnParticle(shell.mesh.position, 0xff4400, 1.2, 0.4);
-          msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`; msg.style.color = '#ff6600';
-          const hpFill = enemy.ui.querySelector('.hp-fill');
-          if (hpFill) hpFill.style.width = Math.max(0, (enemy.health / 100) * 100) + '%';
-          if (enemy.health <= 0) {
-            scene.remove(enemy.mesh); if (enemy.ui.parentNode) enemy.ui.parentNode.removeChild(enemy.ui);
-            state.enemies.splice(state.enemies.indexOf(enemy), 1); state.score += 100; state.kills++;
-            msg.textContent = `УНИЧТОЖЕН! +100`; msg.style.color = '#ffff00';
-            if (state.kills >= state.targetKills) endGame(true);
-          }
-        } else {
-          spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
-          msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`; msg.style.color = '#aaaaaa';
+        if (target.ui) {
+          const hpFill = target.ui.querySelector('.hp-fill');
+          if (hpFill) hpFill.style.width = Math.max(0, (target.userData.health / 100) * 100) + '%';
         }
-        log.prepend(msg); while (log.children.length > 6) log.removeChild(log.lastChild);
-        return true;
+
+        if (target.userData.health <= 0) {
+          scene.remove(target);
+          if (target.ui && target.ui.parentNode) target.ui.parentNode.removeChild(target.ui);
+          
+          if (isEnemy) { state.enemies = state.enemies.filter(e => e.mesh !== target); state.score += 100; state.kills++; msg.textContent = `УНИЧТОЖЕН! +100`; msg.style.color = '#ffff00'; }
+          else if (target === player) endGame(false);
+          else { state.allies = state.allies.filter(a => a.mesh !== target); }
+          
+          if (state.kills >= state.targetKills) endGame(true);
+        }
+      } else {
+        spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
+        msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`; msg.style.color = '#aaaaaa';
       }
+      log.prepend(msg); while (log.children.length > 6) log.removeChild(log.lastChild);
+      return true;
     }
-  } else if (shell.owner === 'enemy' || shell.owner === 'ally') {
-    const targets = shell.owner === 'enemy' ? [player, ...state.allies.map(a => a.mesh)] : state.enemies.map(e => e.mesh);
-    for (const target of targets) {
-      if (!target) continue;
-      const box = new THREE.Box3().setFromObject(target);
-      if (box.containsPoint(shell.mesh.position)) {
-        const armorInfo = getArmorAtPoint(target, shell.mesh.position);
-        const shellDir = shell.velocity.clone().normalize();
-        const armorNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(target.quaternion);
-        const angle = Math.abs(shellDir.dot(armorNormal));
-        const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
-        const penetrated = shell.damage > effectiveArmor;
-        
-        if (penetrated) {
-          target.userData.health -= shell.damage * 0.6; target.userData.modules[armorInfo.module] -= shell.damage;
-          spawnParticle(shell.mesh.position, 0xff0000, 1.5, 0.4);
-          if (target === player && target.userData.health <= 0) endGame(false);
-        } else { spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3); }
-        return true;
-      }
-    }
+    return false;
+  };
+
+  if (shell.owner === 'player') {
+    for (const enemy of state.enemies) if (checkHit(enemy.mesh, true)) return true;
+  } 
+  else if (shell.owner === 'enemy') {
+    if (player && checkHit(player, false)) return true;
+    for (const ally of state.allies) if (checkHit(ally.mesh, false)) return true;
+  }
+  else if (shell.owner === 'ally') {
+    for (const enemy of state.enemies) if (checkHit(enemy.mesh, true)) return true;
   }
   return false;
 }
@@ -796,12 +705,17 @@ function updateLeadIndicator() {
   if (bestTarget) {
     indicator.style.display = 'block';
     const dist = player.position.distanceTo(bestTarget.mesh.position);
-    const totalBulletSpeed = player.userData.speed + 300; // Учет скорости самолета
+    // Скорость снаряда = скорость самолета + скорость снаряда (300)
+    const totalBulletSpeed = player.userData.speed + 300;
     const timeToHit = dist / totalBulletSpeed;
+    
     let enemyVel = new THREE.Vector3(0, 0, 0);
     if (bestTarget.type === 'plane') enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
+    
+    // Точка упреждения
     const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
     const screenPos = leadPos.project(camera);
+    
     indicator.style.left = `${(screenPos.x * 0.5 + 0.5) * innerWidth}px`;
     indicator.style.top = `${(-screenPos.y * 0.5 + 0.5) * innerHeight}px`;
     indicator.style.transform = 'translate(-50%, -50%)';
