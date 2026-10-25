@@ -1,253 +1,3 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<title>Steel Front — WT-like Prototype</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; color: #0f0; user-select: none; cursor: none; }
-  canvas { display: block; }
-  #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-  
-  /* Танковый прицел */
-  #tank-crosshair {
-    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
-    transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
-    border-radius: 50%; box-shadow: 0 0 10px rgba(0,255,0,0.5);
-    display: flex; justify-content: center; align-items: center;
-  }
-  #tank-crosshair::before, #tank-crosshair::after {
-    content: ''; position: absolute; background: rgba(0,255,0,0.9);
-  }
-  #tank-crosshair::before { width: 2px; height: 10px; top: -15px; }
-  #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
-
-  /* Основной прицел самолета (зеленое кольцо) */
-  #plane-crosshair-main {
-    position: absolute; top: 50%; left: 50%; width: 80px; height: 80px;
-    transform: translate(-50%,-50%); display: none; pointer-events: none;
-    border: 2px solid rgba(0,255,0,0.6); border-radius: 50%;
-    box-shadow: 0 0 10px rgba(0,255,0,0.3);
-  }
-  #plane-crosshair-main::before, #plane-crosshair-main::after {
-    content: ''; position: absolute; background: rgba(0,255,0,0.8);
-  }
-  #plane-crosshair-main::before { width: 2px; height: 20px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-  #plane-crosshair-main::after { width: 20px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-
-  /* Кружок донаводки (маленький желтый) */
-  #plane-crosshair-lead {
-    position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
-    transform: translate(-50%,-50%); display: none; pointer-events: none;
-    border: 2px solid rgba(255,255,0,0.9); border-radius: 50%;
-    box-shadow: 0 0 8px rgba(255,255,0,0.7);
-    transition: left 0.05s linear, top 0.05s linear;
-  }
-  #plane-crosshair-lead::after {
-    content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
-    background: #ff0; border-radius: 50%; transform: translate(-50%, -50%);
-  }
-
-  /* Снайперский прицел танка */
-  #sniper-scope {
-    position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
-  }
-  #sniper-scope::before {
-    content: ''; position: absolute; inset: 0;
-    box-shadow: inset 0 0 150px 100px rgba(0,0,0,0.95);
-    background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 70%);
-  }
-  .scope-grid {
-    position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
-    transform: translate(-50%, -50%);
-  }
-  .scope-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(0,0,0,0.8); }
-  .scope-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(0,0,0,0.8); }
-  .scope-center {
-    position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
-    transform: translate(-50%, -50%); border: 1px solid rgba(0,0,0,0.9); border-radius: 50%;
-    display: flex; justify-content: center; align-items: center;
-  }
-  .scope-center::after { content: ''; width: 4px; height: 4px; background: #000; border-radius: 50%; }
-  .scope-scale {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, 20px);
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-  }
-  .scope-scale div { width: 2px; height: 6px; background: #000; position: relative; }
-  .scope-scale div.long { height: 10px; width: 2px; }
-  .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
-
-  /* HUD */
-  #hud-bottom {
-    position: absolute; bottom: 20px; left: 20px; right: 20px;
-    display: flex; justify-content: space-between; align-items: flex-end;
-    text-shadow: 0 0 4px #000, 0 0 8px #000;
-  }
-  .panel {
-    background: rgba(0,20,0,0.6); border: 1px solid rgba(0,255,0,0.4);
-    padding: 8px 12px; border-radius: 4px; font-size: 13px; line-height: 1.5;
-  }
-  #minimap {
-    position: absolute; top: 20px; right: 20px; width: 200px; height: 200px;
-    background: rgba(0,20,0,0.7); border: 1px solid rgba(0,255,0,0.5);
-    border-radius: 4px;
-  }
-  #topinfo {
-    position: absolute; top: 20px; left: 20px; font-size: 14px;
-    text-shadow: 0 0 4px #000;
-  }
-  #compass {
-    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-    width: 400px; height: 30px; border-bottom: 2px solid #0f0;
-    display: flex; justify-content: space-between; align-items: flex-end;
-    font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000;
-    padding-bottom: 5px;
-  }
-  
-  /* Меню теперь с НЕПРОЗРАЧНЫМ фоном */
-  #menu {
-    position: absolute; inset: 0; background: #000;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 10; color: #0f0; gap: 16px; cursor: default;
-  }
-  #z-menu {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.9);
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 15; color: #0f0; gap: 16px; cursor: default;
-  }
-  
-  .btn {
-    pointer-events: all; cursor: pointer; background: transparent;
-    border: 2px solid #0f0; color: #0f0; padding: 12px 40px;
-    font-family: inherit; font-size: 16px; letter-spacing: 2px;
-    transition: all 0.2s;
-  }
-  .btn:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0; }
-  .row { display: flex; gap: 12px; }
-  .btn.small { padding: 8px 20px; font-size: 13px; }
-  .btn.active { background: #0f0; color: #000; }
-  #log {
-    position: absolute; bottom: 120px; left: 20px; font-size: 12px;
-    max-width: 400px; line-height: 1.4; opacity: 0.85;
-  }
-  #log div { animation: fade 4s forwards; }
-  @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
-  
-  #ammo { font-size: 18px; font-weight: bold; color: #0f0; }
-  #ammo.low { color: #ff4400; }
-  
-  #start-timer {
-    position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 80px; font-weight: bold; color: #0f0; text-shadow: 0 0 20px #000;
-    display: none; z-index: 5;
-  }
-
-  #end-screen {
-    position: absolute; inset: 0; background: #000;
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    pointer-events: all; z-index: 20; color: #0f0; gap: 20px; cursor: default;
-  }
-  #end-screen h2 { font-size: 64px; text-shadow: 0 0 20px #0f0; }
-  #end-screen.defeat h2 { color: #f00; text-shadow: 0 0 20px #f00; }
-
-  .world-marker {
-    position: absolute; transform: translate(-50%, -50%);
-    font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px #000, 0 0 5px #000;
-    white-space: nowrap; pointer-events: none;
-    display: flex; flex-direction: column; align-items: center;
-  }
-  .hp-bar {
-    width: 50px; height: 5px; background: rgba(0,0,0,0.8); border: 1px solid #000; margin-top: 2px;
-  }
-  .hp-fill { height: 100%; background: #f00; width: 100%; }
-</style>
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-</head>
-<body>
-<div id="ui">
-  <div id="compass">
-    <span>С</span><span>СВ</span><span>В</span><span>ЮВ</span><span>Ю</span><span>ЮЗ</span><span>З</span><span>СЗ</span>
-  </div>
-  
-  <div id="tank-crosshair"></div>
-  
-  <div id="plane-crosshair-main"></div>
-  <div id="plane-crosshair-lead"></div>
-  
-  <div id="sniper-scope">
-    <div class="scope-grid">
-      <div class="scope-line-h"></div>
-      <div class="scope-line-v"></div>
-      <div class="scope-center"></div>
-      <div class="scope-scale">
-        <div class="long"><span>4</span></div>
-        <div><span>8</span></div>
-        <div><span>12</span></div>
-        <div><span>16</span></div>
-        <div class="long"><span>20</span></div>
-        <div><span>24</span></div>
-        <div><span>28</span></div>
-        <div><span>32</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="topinfo"></div>
-  <div id="markers-container"></div>
-  <canvas id="minimap" width="200" height="200"></canvas>
-  <div id="log"></div>
-  <div id="hud-bottom">
-    <div class="panel" id="status">—</div>
-    <div class="panel" id="reload">Готов</div>
-    <div class="panel" id="ammo-panel">
-      БК: <span id="ammo">0</span>
-    </div>
-  </div>
-  <div id="start-timer">15</div>
-</div>
-
-<div id="menu">
-  <h1>STEEL FRONT</h1>
-  <p>Прототип в стиле War Thunder</p>
-  <div class="row" id="nationRow">
-    <button class="btn small active" data-nation="ussr">СССР</button>
-    <button class="btn small" data-nation="germany">Германия</button>
-  </div>
-  <div class="row" id="typeRow">
-    <button class="btn small active" data-type="tank">Танк</button>
-    <button class="btn small" data-type="plane">Самолёт</button>
-  </div>
-  <div class="row" id="mapRow">
-    <button class="btn small active" data-map="0">Карта: Долина</button>
-    <button class="btn small" data-map="1">Карта: Мегаполис</button>
-  </div>
-  <div class="row">
-    <button class="btn" id="startBtn">В бой!</button>
-  </div>
-  <p style="font-size:12px;opacity:0.5;margin-top:20px; text-align:center;">
-    Танк: WASD — движение, Мышь — башня, Колесико — зум, Shift — оптика<br>
-    Самолёт: Мышь — прицел, W/S или Колесико — тяга, A/D — крен, Q/E — рыскание, C — обзор, ПКМ — зум<br>
-    Выход из боя: Esc
-  </p>
-</div>
-
-<div id="z-menu">
-  <h2>СВОБОДНЫЙ КУРСОР</h2>
-  <p style="margin-bottom: 20px;">Нажмите Z, чтобы вернуться в бой</p>
-  <button class="btn" id="resumeBtn">Продолжить</button>
-  <button class="btn" id="exitBtn" style="background: #300; color: #f00; border-color: #f00;">Выйти из боя</button>
-</div>
-
-<div id="end-screen">
-  <h2 id="end-title">ПОБЕДА</h2>
-  <p id="end-stats">Уничтожено: 0</p>
-  <button class="btn" id="restartBtn">Вернуться в меню</button>
-</div>
-
-<script type="module">
 import * as THREE from 'three';
 
 const state = {
@@ -272,9 +22,9 @@ const state = {
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87a7c7);
-scene.fog = new THREE.Fog(0x87a7c7, 400, 2000);
+scene.fog = new THREE.Fog(0x87a7c7, 500, 3500); // Туман дальше из-за большой карты
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 4000);
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 6000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -284,14 +34,14 @@ document.body.appendChild(renderer.domElement);
 const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x4a3a20, 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 2.0);
-sun.position.set(200, 300, 150);
+sun.position.set(500, 500, 300);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -500;
-sun.shadow.camera.right = 500;
-sun.shadow.camera.top = 500;
-sun.shadow.camera.bottom = -500;
-sun.shadow.camera.far = 1000;
+sun.shadow.camera.left = -800;
+sun.shadow.camera.right = 800;
+sun.shadow.camera.top = 800;
+sun.shadow.camera.bottom = -800;
+sun.shadow.camera.far = 2000;
 scene.add(sun);
 
 const raycaster = new THREE.Raycaster();
@@ -302,23 +52,24 @@ let groundMesh = null;
 
 function getTerrainHeight(x, z) {
   if (!groundMesh) return 0;
-  raycaster.set(new THREE.Vector3(x, 1000, z), downVector);
+  raycaster.set(new THREE.Vector3(x, 1500, z), downVector);
   const intersects = raycaster.intersectObject(groundMesh);
   if (intersects.length > 0) return intersects[0].point.y;
   return 0;
 }
 
+// УВЕЛИЧЕННАЯ КАРТА (5000x5000)
 function buildMapFields() {
   const group = new THREE.Group();
-  const size = 3000;
+  const size = 5000;
   const groundGeo = new THREE.PlaneGeometry(size, size, 128, 128);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i);
     const dist = Math.sqrt(x*x + y*y);
     let h = 0;
-    if (dist > 400) {
-      h = Math.sin(x*0.005)*Math.cos(y*0.005)*80 + Math.sin(x*0.015+y*0.01)*30;
+    if (dist > 600) {
+      h = Math.sin(x*0.003)*Math.cos(y*0.003)*100 + Math.sin(x*0.01+y*0.008)*40;
       h = Math.max(0, h);
     }
     pos.setZ(i, h);
@@ -331,12 +82,13 @@ function buildMapFields() {
   groundMesh.receiveShadow = true;
   group.add(groundMesh);
 
-  for (let i = 0; i < 400; i++) {
-    const x = (Math.random() - 0.5) * 2000;
-    const z = (Math.random() - 0.5) * 2000;
-    if (Math.sqrt(x*x + z*z) < 150) continue;
+  // Больше деревьев
+  for (let i = 0; i < 800; i++) {
+    const x = (Math.random() - 0.5) * 3500;
+    const z = (Math.random() - 0.5) * 3500;
+    if (Math.sqrt(x*x + z*z) < 250) continue;
     const y = getTerrainHeight(x, z);
-    if (y > 100) continue;
+    if (y > 150) continue;
 
     const t = new THREE.Group();
     const trunk = new THREE.Mesh(
@@ -358,12 +110,13 @@ function buildMapFields() {
     group.add(t);
   }
 
-  for (let i = 0; i < 50; i++) {
-    const x = (Math.random() - 0.5) * 1800;
-    const z = (Math.random() - 0.5) * 1800;
-    if (Math.sqrt(x*x + z*z) < 200) continue;
+  // Больше домов
+  for (let i = 0; i < 100; i++) {
+    const x = (Math.random() - 0.5) * 3000;
+    const z = (Math.random() - 0.5) * 3000;
+    if (Math.sqrt(x*x + z*z) < 300) continue;
     const y = getTerrainHeight(x, z);
-    if (y > 80) continue;
+    if (y > 120) continue;
     const house = createHouse();
     house.position.set(x, y, z);
     house.rotation.y = Math.random() * Math.PI * 2;
@@ -374,7 +127,7 @@ function buildMapFields() {
 
 function buildMapCity() {
   const group = new THREE.Group();
-  const size = 3000;
+  const size = 5000;
   
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(size, size),
@@ -385,14 +138,14 @@ function buildMapCity() {
   groundMesh = ground;
   group.add(ground);
 
-  for (let x = -1200; x <= 1200; x += 80) {
-    for (let z = -1200; z <= 1200; z += 80) {
-      if (Math.abs(x) < 100 && Math.abs(z) < 100) continue;
-      if (Math.random() > 0.6) continue;
+  for (let x = -2000; x <= 2000; x += 100) {
+    for (let z = -2000; z <= 2000; z += 100) {
+      if (Math.abs(x) < 150 && Math.abs(z) < 150) continue;
+      if (Math.random() > 0.7) continue;
 
-      const w = 30 + Math.random()*30;
-      const h = 30 + Math.random()*80;
-      const d = 30 + Math.random()*30;
+      const w = 40 + Math.random()*30;
+      const h = 40 + Math.random()*100;
+      const d = 40 + Math.random()*30;
       
       const b = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, d),
@@ -410,7 +163,7 @@ function buildMapCity() {
 
 function createHouse() {
   const g = new THREE.Group();
-  const w = 15 + Math.random()*10, h = 10 + Math.random()*8, d = 15 + Math.random()*10;
+  const w = 20 + Math.random()*15, h = 15 + Math.random()*10, d = 20 + Math.random()*15;
   const walls = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.9 })
@@ -420,10 +173,10 @@ function createHouse() {
   g.add(walls);
 
   const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(Math.max(w, d) * 0.8, 8, 4),
+    new THREE.ConeGeometry(Math.max(w, d) * 0.8, 10, 4),
     new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.8 })
   );
-  roof.position.y = h + 4;
+  roof.position.y = h + 5;
   roof.rotation.y = Math.PI/4;
   roof.castShadow = true;
   g.add(roof);
@@ -441,11 +194,12 @@ function loadMap(idx) {
   });
   state.capturePoints = [];
   const letters = ['A', 'B', 'C'];
-  const positions = [[-500, -500], [0, 600], [500, -400]];
+  // Точки раскиданы по большой карте
+  const positions = [[-1000, -1000], [0, 1200], [1000, -800]];
   
   letters.forEach((letter, i) => {
     const y = getTerrainHeight(positions[i][0], positions[i][1]);
-    const geo = new THREE.CylinderGeometry(40, 40, 2, 32);
+    const geo = new THREE.CylinderGeometry(60, 60, 2, 32);
     const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, transparent: true, opacity: 0.3 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(positions[i][0], y + 1, positions[i][1]);
@@ -642,7 +396,7 @@ const particles = [];
 
 function spawnPlayer() {
   player = makeVehicle(state.nation, state.type);
-  const y = state.type === 'plane' ? 200 : getTerrainHeight(0, 0) + 1.2;
+  const y = state.type === 'plane' ? 300 : getTerrainHeight(0, 0) + 1.2;
   player.position.set(0, y, 0);
   scene.add(player);
 
@@ -667,9 +421,9 @@ function spawnBots() {
     const type = Math.random() < 0.3 ? 'plane' : 'tank';
     const mesh = makeVehicle(state.nation, type);
     
-    const x = (Math.random() - 0.5) * 50;
-    const z = (Math.random() - 0.5) * 50;
-    const y = type === 'plane' ? 200 : getTerrainHeight(x, z) + 1.2;
+    const x = (Math.random() - 0.5) * 100;
+    const z = (Math.random() - 0.5) * 100;
+    const y = type === 'plane' ? 300 : getTerrainHeight(x, z) + 1.2;
     
     mesh.position.set(x, y, z);
     scene.add(mesh);
@@ -683,7 +437,7 @@ function spawnBots() {
       mesh, type, ui,
       health: mesh.userData.health,
       lastShot: 0,
-      target: new THREE.Vector3((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000),
+      target: new THREE.Vector3((Math.random()-0.5)*2000, 1.5, (Math.random()-0.5)*2000),
       changeTarget: 0,
     });
   }
@@ -694,12 +448,12 @@ function spawnBots() {
     const mesh = makeVehicle(nation, type);
     
     const angle = Math.random() * Math.PI * 2;
-    const dist = 300 + Math.random() * 500;
+    const dist = 800 + Math.random() * 1000; // Спавн врагов дальше
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
     
     let y;
-    if (type === 'plane') y = 150 + Math.random()*50;
+    if (type === 'plane') y = 200 + Math.random()*100;
     else y = getTerrainHeight(x, z) + 1.2;
 
     mesh.position.set(x, y, z);
@@ -715,7 +469,7 @@ function spawnBots() {
       mesh, type, ui,
       health: mesh.userData.health,
       lastShot: 0,
-      target: new THREE.Vector3((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000),
+      target: new THREE.Vector3((Math.random()-0.5)*2000, 1.5, (Math.random()-0.5)*2000),
       changeTarget: 0,
     });
   }
@@ -814,8 +568,11 @@ function handleHit(shell) {
       }
     }
   }
-  else if (shell.owner === 'enemy') {
-    const targets = [player, ...state.allies.map(a => a.mesh)];
+  else if (shell.owner === 'enemy' || shell.owner === 'ally') {
+    const targets = shell.owner === 'enemy' 
+      ? [player, ...state.allies.map(a => a.mesh)] 
+      : state.enemies.map(e => e.mesh);
+      
     for (const target of targets) {
       if (!target) continue;
       const box = new THREE.Box3().setFromObject(target);
@@ -827,27 +584,18 @@ function handleHit(shell) {
         const effectiveArmor = armorInfo.armor / Math.max(angle, 0.3);
 
         const penetrated = shell.damage > effectiveArmor;
-        const log = document.getElementById('log');
-        const msg = document.createElement('div');
         
         if (penetrated) {
           target.userData.health -= shell.damage * 0.6;
           target.userData.modules[armorInfo.module] -= shell.damage;
           spawnParticle(shell.mesh.position, 0xff0000, 1.5, 0.4);
-          msg.textContent = `ПРОБИТИЕ в ${armorInfo.zone}!`;
-          msg.style.color = '#ff0000';
           
           if (target === player && target.userData.health <= 0) {
-            msg.textContent = `ВАС УНИЧТОЖИЛИ!`;
             endGame(false);
           }
         } else {
           spawnParticle(shell.mesh.position, 0xdddddd, 0.8, 0.3);
-          msg.textContent = `РИКОШЕТ (${Math.round(effectiveArmor)} мм)`;
-          msg.style.color = '#aaaaaa';
         }
-        log.prepend(msg);
-        while (log.children.length > 6) log.removeChild(log.lastChild);
         return true;
       }
     }
@@ -1066,6 +814,7 @@ function updatePlane(dt) {
   }
 }
 
+// Обновленная логика ботов (ОНИ СТРЕЛЯЮТ)
 function updateBots(dt) {
   if (state.isPreparePhase) return;
 
@@ -1075,11 +824,32 @@ function updateBots(dt) {
     for (const bot of bots) {
       const ud = bot.mesh.userData;
 
+      // Поиск ближайшей цели для всех типов
+      let closestTarget = null;
+      let minDist = 1200; // Дистанция обнаружения
+      
+      for (const tb of targetBots) {
+        if (!tb.mesh) continue;
+        const d = bot.mesh.position.distanceTo(tb.mesh.position);
+        if (d < minDist) {
+          minDist = d;
+          closestTarget = tb.mesh;
+        }
+      }
+      if (isEnemyGroup && player) {
+        const d = bot.mesh.position.distanceTo(player.position);
+        if (d < minDist) {
+          minDist = d;
+          closestTarget = player;
+        }
+      }
+
+      // Логика движения и стрельбы
       if (bot.type === 'tank') {
         const toTarget = bot.target.clone().sub(bot.mesh.position);
         toTarget.y = 0;
-        if (toTarget.length() < 20 || now > bot.changeTarget) {
-          bot.target.set((Math.random()-0.5)*1000, 1.5, (Math.random()-0.5)*1000);
+        if (toTarget.length() < 30 || now > bot.changeTarget) {
+          bot.target.set((Math.random()-0.5)*2000, 1.5, (Math.random()-0.5)*2000);
           bot.changeTarget = now + 5 + Math.random()*5;
         } else {
           const dir = toTarget.normalize();
@@ -1094,30 +864,12 @@ function updateBots(dt) {
           bot.mesh.position.y = THREE.MathUtils.lerp(bot.mesh.position.y, groundY + 1.0, 5 * dt);
         }
 
-        let closestTarget = null;
-        let minDist = 300;
-        for (const tb of targetBots) {
-          if (!tb.mesh) continue;
-          const d = bot.mesh.position.distanceTo(tb.mesh.position);
-          if (d < minDist) {
-            minDist = d;
-            closestTarget = tb.mesh;
-          }
-        }
-        if (isEnemyGroup && player) {
-          const d = bot.mesh.position.distanceTo(player.position);
-          if (d < minDist) {
-            minDist = d;
-            closestTarget = player;
-          }
-        }
-
         if (closestTarget) {
           const toTarget = closestTarget.position.clone().sub(bot.mesh.position);
           const angle = Math.atan2(toTarget.x, toTarget.z) - bot.mesh.rotation.y;
-          ud.turret.rotation.y = THREE.MathUtils.lerp(ud.turret.rotation.y, angle, 0.05);
+          ud.turret.rotation.y = THREE.MathUtils.lerp(ud.turret.rotation.y, angle, 0.1); // Быстрее наводятся
 
-          if (minDist < 250 && now - bot.lastShot > 4.0) {
+          if (minDist < 800 && now - bot.lastShot > 3.0) { // Стреляют чаще
             bot.lastShot = now;
             const muzzle = new THREE.Vector3();
             ud.muzzle.getWorldPosition(muzzle);
@@ -1128,13 +880,26 @@ function updateBots(dt) {
           }
         }
       } else {
+        // Боты-самолеты (Летают и стреляют)
         bot.mesh.rotation.y += 0.1 * dt;
         bot.mesh.rotation.z = 0.4;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
         bot.mesh.position.addScaledVector(fwd, 120 * dt);
+        
         if (bot.mesh.position.y < 50) bot.mesh.position.y = 50;
-        if (bot.mesh.position.length() > 1500) {
-          bot.mesh.position.set((Math.random()-0.5)*1000, 200, (Math.random()-0.5)*1000);
+        if (bot.mesh.position.length() > 2500) {
+          bot.mesh.position.set((Math.random()-0.5)*2000, 200, (Math.random()-0.5)*2000);
+        }
+
+        // Стрельба для самолетов ботов
+        if (closestTarget && minDist < 600 && now - bot.lastShot > 1.0) {
+          bot.lastShot = now;
+          const muzzle = new THREE.Vector3();
+          ud.muzzle.getWorldPosition(muzzle);
+          const dir = closestTarget.position.clone().sub(bot.mesh.position).normalize();
+          dir.x += (Math.random()-0.5)*0.1; // Больший разброс
+          dir.y += (Math.random()-0.5)*0.1;
+          spawnShell(muzzle, dir, 300, 25, isEnemyGroup ? 'enemy' : 'ally');
         }
       }
     }
@@ -1179,6 +944,7 @@ function updateParticles(dt) {
   }
 }
 
+// ИСПРАВЛЕННЫЙ РАСЧЕТ ДОНАВОДКИ (С учетом скорости игрока)
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
   const indicator = document.getElementById('plane-crosshair-lead');
@@ -1191,7 +957,7 @@ function updateLeadIndicator() {
   for (const enemy of state.enemies) {
     const toEnemy = enemy.mesh.position.clone().sub(player.position);
     const dist = toEnemy.length();
-    if (dist > 800) continue;
+    if (dist > 1200) continue;
     
     toEnemy.normalize();
     const angle = forward.angleTo(toEnemy);
@@ -1206,14 +972,20 @@ function updateLeadIndicator() {
     indicator.style.display = 'block';
     
     const dist = player.position.distanceTo(bestTarget.mesh.position);
-    const bulletSpeed = 300;
-    const timeToHit = dist / bulletSpeed;
+    
+    // Скорость снаряда на выходе = скорость самолета + скорость снаряда
+    const playerSpeed = player.userData.speed;
+    const bulletSpeed = 300; 
+    const totalBulletSpeed = playerSpeed + bulletSpeed;
+    
+    const timeToHit = dist / totalBulletSpeed;
     
     let enemyVel = new THREE.Vector3(0, 0, 0);
     if (bestTarget.type === 'plane') {
       enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
     }
     
+    // Истинная точка упреждения
     const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
     
     const screenPos = leadPos.project(camera);
@@ -1312,7 +1084,7 @@ function updateHUD() {
   mctx.clearRect(0, 0, 200, 200);
   mctx.fillStyle = 'rgba(0,20,0,0.6)';
   mctx.fillRect(0, 0, 200, 200);
-  const scale = 200 / 2000;
+  const scale = 200 / 4000; // Масштаб для большой карты
   const cx = 100, cz = 100;
 
   mctx.fillStyle = 'rgba(0,255,0,0.5)';
@@ -1488,7 +1260,6 @@ document.getElementById('exitBtn').onclick = () => {
   endGame(false);
 };
 document.getElementById('restartBtn').onclick = () => {
-  // Очистка сцены
   scene.remove(player);
   player = null;
   state.allies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
@@ -1497,8 +1268,6 @@ document.getElementById('restartBtn').onclick = () => {
   state.enemies = [];
   shells.forEach(s => scene.remove(s.mesh));
   shells.length = 0;
-  
-  // Скрываем экран поражения и показываем меню
   document.getElementById('end-screen').style.display = 'none';
   document.getElementById('menu').style.display = 'flex';
 };
