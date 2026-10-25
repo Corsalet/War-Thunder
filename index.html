@@ -450,12 +450,10 @@ function getArmorAtPoint(vehicle, worldPoint) {
   }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ УРОНА (Через дистанцию)
 function handleHit(shell) {
   const checkHit = (target, isEnemy) => {
     if (!target) return false;
     const box = new THREE.Box3().setFromObject(target);
-    // Проверка на пересечение сферы снаряда и коробки цели
     if (box.distanceToPoint(shell.mesh.position) < 1.5) { 
       const armorInfo = getArmorAtPoint(target, shell.mesh.position);
       const shellDir = shell.velocity.clone().normalize();
@@ -630,6 +628,7 @@ function updatePlane(dt) {
   }
 }
 
+// ИСПРАВЛЕННАЯ ЛОГИКА БОТОВ (Стреляют только вперед)
 function updateBots(dt) {
   if (state.isPreparePhase) return;
   const now = performance.now() / 1000;
@@ -650,7 +649,8 @@ function updateBots(dt) {
         }
         if (closestTarget) {
           const toTarget = closestTarget.position.clone().sub(bot.mesh.position);
-          bot.mesh.userData.turret.rotation.y = THREE.MathUtils.lerp(bot.mesh.userData.turret.rotation.y, Math.atan2(toTarget.x, toTarget.z) - bot.mesh.rotation.y, 0.1);
+          const localAngle = Math.atan2(toTarget.x, toTarget.z) - bot.mesh.rotation.y;
+          bot.mesh.userData.turret.rotation.y = THREE.MathUtils.lerp(bot.mesh.userData.turret.rotation.y, localAngle, 0.1);
           if (minDist < 800 && now - bot.lastShot > 3.0) {
             bot.lastShot = now; const muzzle = new THREE.Vector3(); bot.mesh.userData.muzzle.getWorldPosition(muzzle);
             const dir = toTarget.normalize(); dir.x += (Math.random()-0.5)*0.05; dir.y += (Math.random()-0.5)*0.05;
@@ -658,14 +658,22 @@ function updateBots(dt) {
           }
         }
       } else {
+        // Логика самолетов ботов
         bot.mesh.rotation.y += 0.1 * dt; bot.mesh.rotation.z = 0.4;
         bot.mesh.position.addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion), 120 * dt);
         if (bot.mesh.position.y < 50) bot.mesh.position.y = 50;
         if (bot.mesh.position.length() > 2500) bot.mesh.position.set((Math.random()-0.5)*2000, 200, (Math.random()-0.5)*2000);
+        
+        // Проверка: стреляем ТОЛЬКО если цель впереди (в радиусе 60 градусов)
         if (closestTarget && minDist < 600 && now - bot.lastShot > 1.0) {
-          bot.lastShot = now; const muzzle = new THREE.Vector3(); bot.mesh.userData.muzzle.getWorldPosition(muzzle);
-          const dir = closestTarget.position.clone().sub(bot.mesh.position).normalize(); dir.x += (Math.random()-0.5)*0.1; dir.y += (Math.random()-0.5)*0.1;
-          spawnShell(muzzle, dir, 300, 25, isEnemyGroup ? 'enemy' : 'ally');
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.mesh.quaternion);
+          const toTarget = closestTarget.position.clone().sub(bot.mesh.position).normalize();
+          const dot = forward.dot(toTarget);
+          if (dot > 0.5) { // Угол < 60 градусов
+            bot.lastShot = now; const muzzle = new THREE.Vector3(); bot.mesh.userData.muzzle.getWorldPosition(muzzle);
+            const dir = closestTarget.position.clone().sub(bot.mesh.position).normalize(); dir.x += (Math.random()-0.5)*0.1; dir.y += (Math.random()-0.5)*0.1;
+            spawnShell(muzzle, dir, 300, 25, isEnemyGroup ? 'enemy' : 'ally');
+          }
         }
       }
     }
@@ -690,6 +698,7 @@ function updateParticles(dt) {
   }
 }
 
+// ТОЧНЫЙ РАСЧЕТ ДОНАВОДКИ (Используем прямую проекцию)
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
   const indicator = document.getElementById('plane-crosshair-lead');
@@ -705,14 +714,12 @@ function updateLeadIndicator() {
   if (bestTarget) {
     indicator.style.display = 'block';
     const dist = player.position.distanceTo(bestTarget.mesh.position);
-    // Скорость снаряда = скорость самолета + скорость снаряда (300)
-    const totalBulletSpeed = player.userData.speed + 300;
+    const totalBulletSpeed = player.userData.speed + 300; 
     const timeToHit = dist / totalBulletSpeed;
     
     let enemyVel = new THREE.Vector3(0, 0, 0);
     if (bestTarget.type === 'plane') enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
     
-    // Точка упреждения
     const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
     const screenPos = leadPos.project(camera);
     
