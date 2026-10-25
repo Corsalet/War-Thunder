@@ -497,7 +497,7 @@ function handleHit(shell) {
 
         if (target.userData.health <= 0) {
           scene.remove(target);
-          if (target.ui && target.ui.parentNode) target.ui.parentNode.removeChild(target.ui); // УДАЛЕНИЕ МАРКЕРА
+          if (target.ui && target.ui.parentNode) target.ui.parentNode.removeChild(target.ui);
           
           if (isEnemy) { state.enemies = state.enemies.filter(e => e.mesh !== target); state.score += 100; state.kills++; msg.textContent = `УНИЧТОЖЕН! +100`; msg.style.color = '#ffff00'; }
           else if (target === player) endGame(false);
