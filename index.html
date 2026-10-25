@@ -9,6 +9,7 @@
   canvas { display: block; }
   #ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   
+  /* Танковый прицел */
   #tank-crosshair {
     position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
     transform: translate(-50%,-50%); border: 2px solid rgba(0,255,0,0.8);
@@ -21,19 +22,33 @@
   #tank-crosshair::before { width: 2px; height: 10px; top: -15px; }
   #tank-crosshair::after { width: 2px; height: 10px; bottom: -15px; }
 
-  #plane-crosshair {
-    position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
+  /* Основной прицел самолета (зеленое кольцо) */
+  #plane-crosshair-main {
+    position: absolute; top: 50%; left: 50%; width: 80px; height: 80px;
     transform: translate(-50%,-50%); display: none; pointer-events: none;
-    border: 2px solid rgba(255,255,0,0.8); border-radius: 50%;
-    box-shadow: 0 0 10px rgba(255,255,0,0.5);
-    transition: left 0.05s linear, top 0.05s linear; /* Плавное движение кружка */
+    border: 2px solid rgba(0,255,0,0.6); border-radius: 50%;
+    box-shadow: 0 0 10px rgba(0,255,0,0.3);
   }
-  #plane-crosshair::before, #plane-crosshair::after {
-    content: ''; position: absolute; background: rgba(255,255,0,0.8);
+  #plane-crosshair-main::before, #plane-crosshair-main::after {
+    content: ''; position: absolute; background: rgba(0,255,0,0.8);
   }
-  #plane-crosshair::before { width: 2px; height: 8px; top: 50%; left: -10px; transform: translateY(-50%); }
-  #plane-crosshair::after { width: 2px; height: 8px; top: 50%; right: -10px; transform: translateY(-50%); }
+  #plane-crosshair-main::before { width: 2px; height: 20px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+  #plane-crosshair-main::after { width: 20px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
+  /* Кружок донаводки (маленький желтый) */
+  #plane-crosshair-lead {
+    position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+    transform: translate(-50%,-50%); display: none; pointer-events: none;
+    border: 2px solid rgba(255,255,0,0.9); border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255,255,0,0.7);
+    transition: left 0.05s linear, top 0.05s linear;
+  }
+  #plane-crosshair-lead::after {
+    content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+    background: #ff0; border-radius: 50%; transform: translate(-50%, -50%);
+  }
+
+  /* Снайперский прицел танка */
   #sniper-scope {
     position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none;
   }
@@ -63,6 +78,7 @@
   .scope-scale div.long { height: 10px; width: 2px; }
   .scope-scale div span { position: absolute; left: 10px; font-size: 10px; color: #000; top: -5px; }
 
+  /* HUD */
   #hud-bottom {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -88,12 +104,19 @@
     font-size: 12px; font-weight: bold; text-shadow: 0 0 4px #000;
     padding-bottom: 5px;
   }
-  #menu, #z-menu {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+  
+  /* Меню теперь с НЕПРОЗРАЧНЫМ фоном */
+  #menu {
+    position: absolute; inset: 0; background: #000;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     pointer-events: all; z-index: 10; color: #0f0; gap: 16px; cursor: default;
   }
-  #z-menu { display: none; background: rgba(0,0,0,0.7); z-index: 15; cursor: default; }
+  #z-menu {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: all; z-index: 15; color: #0f0; gap: 16px; cursor: default;
+  }
+  
   .btn {
     pointer-events: all; cursor: pointer; background: transparent;
     border: 2px solid #0f0; color: #0f0; padding: 12px 40px;
@@ -121,7 +144,7 @@
   }
 
   #end-screen {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.8);
+    position: absolute; inset: 0; background: #000;
     display: none; flex-direction: column; align-items: center; justify-content: center;
     pointer-events: all; z-index: 20; color: #0f0; gap: 20px; cursor: default;
   }
@@ -151,7 +174,8 @@
   
   <div id="tank-crosshair"></div>
   
-  <div id="plane-crosshair"></div>
+  <div id="plane-crosshair-main"></div>
+  <div id="plane-crosshair-lead"></div>
   
   <div id="sniper-scope">
     <div class="scope-grid">
@@ -624,10 +648,12 @@ function spawnPlayer() {
 
   if (state.type === 'tank') {
     document.getElementById('tank-crosshair').style.display = 'flex';
-    document.getElementById('plane-crosshair').style.display = 'none';
+    document.getElementById('plane-crosshair-main').style.display = 'none';
+    document.getElementById('plane-crosshair-lead').style.display = 'none';
   } else {
     document.getElementById('tank-crosshair').style.display = 'none';
-    document.getElementById('plane-crosshair').style.display = 'block';
+    document.getElementById('plane-crosshair-main').style.display = 'block';
+    document.getElementById('plane-crosshair-lead').style.display = 'block';
   }
 }
 
@@ -992,7 +1018,6 @@ function updateTank(dt) {
   turret.rotation.x = THREE.MathUtils.lerp(turret.rotation.x, targetPitch, 10 * dt);
 }
 
-// === ВОЗВРАЩЕННАЯ ФИЗИКА САМОЛЕТА (LERPS) ===
 function updatePlane(dt) {
   const ud = player.userData;
 
@@ -1154,20 +1179,16 @@ function updateParticles(dt) {
   }
 }
 
-// ============================================================
-// УПРЕЖДАЮЩИЙ ПРИЦЕЛ (AIM ASSIST) ДЛЯ ВСЕХ ЦЕЛЕЙ
-// ============================================================
 function updateLeadIndicator() {
   if (!player || state.type !== 'plane') return;
-  const indicator = document.getElementById('plane-crosshair');
+  const indicator = document.getElementById('plane-crosshair-lead');
   
   let bestTarget = null;
-  let minAngle = Math.PI / 6; // 30 градусов конус
+  let minAngle = Math.PI / 6;
   
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   
   for (const enemy of state.enemies) {
-    // Теперь донаводка работает и для танков, и для самолетов
     const toEnemy = enemy.mesh.position.clone().sub(player.position);
     const dist = toEnemy.length();
     if (dist > 800) continue;
@@ -1185,19 +1206,16 @@ function updateLeadIndicator() {
     indicator.style.display = 'block';
     
     const dist = player.position.distanceTo(bestTarget.mesh.position);
-    const bulletSpeed = 300; // Скорость снаряда
+    const bulletSpeed = 300;
     const timeToHit = dist / bulletSpeed;
     
-    // Скорость врага (если танк - он почти стоит, если самолет - летит)
     let enemyVel = new THREE.Vector3(0, 0, 0);
     if (bestTarget.type === 'plane') {
       enemyVel = new THREE.Vector3(0, 0, -1).applyQuaternion(bestTarget.mesh.quaternion).multiplyScalar(bestTarget.mesh.userData.speed);
     }
     
-    // Точка упреждения
     const leadPos = bestTarget.mesh.position.clone().addScaledVector(enemyVel, timeToHit);
     
-    // Проецируем в 2D
     const screenPos = leadPos.project(camera);
     const x = (screenPos.x * 0.5 + 0.5) * innerWidth;
     const y = (-screenPos.y * 0.5 + 0.5) * innerHeight;
@@ -1206,7 +1224,6 @@ function updateLeadIndicator() {
     indicator.style.top = `${y}px`;
     indicator.style.transform = 'translate(-50%, -50%)';
   } else {
-    // Если цели нет, ставим кружок в центр
     indicator.style.display = 'block';
     indicator.style.left = '50%';
     indicator.style.top = '50%';
@@ -1471,6 +1488,7 @@ document.getElementById('exitBtn').onclick = () => {
   endGame(false);
 };
 document.getElementById('restartBtn').onclick = () => {
+  // Очистка сцены
   scene.remove(player);
   player = null;
   state.allies.forEach(b => { scene.remove(b.mesh); if (b.ui.parentNode) b.ui.parentNode.removeChild(b.ui); });
@@ -1479,6 +1497,9 @@ document.getElementById('restartBtn').onclick = () => {
   state.enemies = [];
   shells.forEach(s => scene.remove(s.mesh));
   shells.length = 0;
+  
+  // Скрываем экран поражения и показываем меню
+  document.getElementById('end-screen').style.display = 'none';
   document.getElementById('menu').style.display = 'flex';
 };
 
